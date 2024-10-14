@@ -18,9 +18,9 @@ from .utils import (
     quadrilateral_areas,
     ap2ep,
     ep2ap,
+    DataReader
 )
 import pandas as pd
-import re
 from pathlib import Path
 import glob
 from collections import defaultdict
@@ -585,6 +585,7 @@ def generate_rectangular_hgrid(lons, lats):
         }
     )
 
+        
 
 class experiment:
     """The main class for setting up a regional experiment.
@@ -697,7 +698,7 @@ class experiment:
         depth,
         mom_run_dir,
         mom_input_dir,
-        toolpath_dir,
+        toolpath_dir = None,
         longitude_extent=None,
         latitude_extent=None,
         hgrid_type="even_spacing",
@@ -793,6 +794,7 @@ class experiment:
         input_rundir = self.mom_input_dir / "rundir"
         if not input_rundir.exists():
             input_rundir.symlink_to(self.mom_run_dir.resolve())
+
 
     def __str__(self) -> str:
         return json.dumps(self.write_config_file(export=False, quiet=True), indent=4)
@@ -1065,7 +1067,7 @@ class experiment:
             "minimum_depth": self.minimum_depth,
             "vgrid": str(vgrid_path),
             "hgrid": str(hgrid_path),
-            "bathymetry": self.bathymetry_property,
+            "bathymetry": DSHolder(self.mom_input_dir, "bathymetry"),
             "ocean_state": self.ocean_state_boundaries,
             "tides": self.tides_boundaries,
             "initial_conditions": self.initial_condition,
@@ -1847,7 +1849,7 @@ class experiment:
         tgrid = xr.Dataset(
             data_vars={
                 "depth": (
-                    ["nx", "ny"],
+                    ["ny", "nx"],
                     np.zeros(
                         self.hgrid.x.isel(
                             nxp=slice(1, None, 2), nyp=slice(1, None, 2)
@@ -1857,13 +1859,13 @@ class experiment:
             },
             coords={
                 "lon": (
-                    ["nx", "ny"],
+                    ["ny", "nx"],
                     self.hgrid.x.isel(
                         nxp=slice(1, None, 2), nyp=slice(1, None, 2)
                     ).values,
                 ),
                 "lat": (
-                    ["nx", "ny"],
+                    ["ny", "nx"],
                     self.hgrid.y.isel(
                         nxp=slice(1, None, 2), nyp=slice(1, None, 2)
                     ).values,
