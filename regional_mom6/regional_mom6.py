@@ -14,7 +14,7 @@ import shutil
 import os
 import importlib.resources
 import datetime
-from .utils import quadrilateral_areas, ap2ep, ep2ap, DataReader
+from .utils import quadrilateral_areas, ap2ep, ep2ap
 import pandas as pd
 from pathlib import Path
 import glob
