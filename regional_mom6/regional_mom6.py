@@ -1114,7 +1114,6 @@ class experiment:
             "minimum_depth": self.minimum_depth,
             "vgrid": str(vgrid_path),
             "hgrid": str(hgrid_path),
-            "bathymetry": DSHolder(self.mom_input_dir, "bathymetry"),
             "ocean_state": self.ocean_state_boundaries,
             "tides": self.tides_boundaries,
             "initial_conditions": self.initial_condition,
