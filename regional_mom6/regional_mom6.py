@@ -2192,7 +2192,7 @@ class experiment:
         overwrite=False,
         with_tides=False,
         boundaries=["south", "north", "west", "east"],
-        premade_rundir_path_arg =  None
+        premade_rundir_path_arg=None,
     ):
         """
         Set up the run directory for MOM6. Either copy a pre-made set of files, or modify
