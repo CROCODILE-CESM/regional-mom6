@@ -1,40 +1,5 @@
 import numpy as np
-import pathlib.Path as Path
-import xarray as xr
-class DataReader:
-    """
-    Internally used class to hold the datasets associated with each input file. Allows user to return dataset, get the path, or plot
-    each input file via a simple command like `expt.bathymetry.plot` or `expt.bathymetry.path`.
-    """
-    def __init__(self,path, name):
-        ## Note, if including plot functions later, add plot_function = None as a kwarg
-        self.name = name
-        self.path = Path(path)
-        self.dataset = None
-        self()
-    def __call__(self):
-        if self.dataset is not None:
-            return self.dataset
-        try:
-            if "segment" in self.name:
-                self.dataset = xr.open_mfdataset(str(self.path / f"*{self.name}*.nc"), decode_cf=False, decode_times=False)
-            else:
-                self.dataset = xr.open_dataset(self.path / f"{self.name}.nc", decode_cf=False, decode_times=False)
-            return self.dataset
 
-        except FileNotFoundError:
-            if self.name == "bathymetry":
-                method = "setup_bathymetry"
-            elif self.name == "init_vel":
-                method = "setup_initial_conditions"
-            else:
-                method = "appropriate"
-            
-            print(f"{self.name}.nc file not found! Make sure you've successfully run the {method} method, or copied your own {self.name} file into {self.path}.")
-        return None
-    
-    def __repr__(self):
-        return repr(self())
 
 def vecdot(v1, v2):
     """Return the dot product of vectors ``v1`` and ``v2``.

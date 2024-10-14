@@ -14,12 +14,7 @@ import shutil
 import os
 import importlib.resources
 import datetime
-from .utils import (
-    quadrilateral_areas,
-    ap2ep,
-    ep2ap,
-    DataReader
-)
+from .utils import quadrilateral_areas, ap2ep, ep2ap, DataReader
 import pandas as pd
 from pathlib import Path
 import glob
@@ -585,7 +580,6 @@ def generate_rectangular_hgrid(lons, lats):
         }
     )
 
-        
 
 class experiment:
     """The main class for setting up a regional experiment.
@@ -698,7 +692,7 @@ class experiment:
         depth,
         mom_run_dir,
         mom_input_dir,
-        toolpath_dir = None,
+        toolpath_dir=None,
         longitude_extent=None,
         latitude_extent=None,
         hgrid_type="even_spacing",
@@ -795,17 +789,70 @@ class experiment:
         if not input_rundir.exists():
             input_rundir.symlink_to(self.mom_run_dir.resolve())
 
-
     def __str__(self) -> str:
         return json.dumps(self.write_config_file(export=False, quiet=True), indent=4)
 
     def __getattr__(self, name):
+
+        ## First, check whether the attribute is an input file
+
+        if name == "bathymetry":
+            if (self.mom_input_dir / "bathymetry.nc").exists():
+                return xr.open_dataset(
+                    self.mom_input_dir / "bathymetry.nc",
+                    decode_cf=False,
+                    decode_times=False,
+                )
+            else:
+                print(
+                    f"bathymetry.nc file not found! Make sure you've successfully run the setup_bathmetry method, or copied your own bathymetry.nc file into {self.mom_input_dir}."
+                )
+                return None
+        elif name == "init_velocities":
+            if (self.mom_input_dir / "init_vel.nc").exists():
+                return xr.open_dataset(
+                    self.mom_input_dir / "init_vel.nc",
+                    decode_cf=False,
+                    decode_times=False,
+                )
+            else:
+                print(
+                    f"init_vel.nc file not found! Make sure you've successfully run the setup_initial_condition method, or copied your own init_vel.nc file into {self.mom_input_dir}."
+                )
+                return
+
+        elif name == "init_tracers":
+            if (self.mom_input_dir / "init_tracers.nc").exists():
+                return xr.open_dataset(
+                    self.mom_input_dir / "init_tracers.nc",
+                    decode_cf=False,
+                    decode_times=False,
+                )
+            else:
+                print(
+                    f"init_tracers.nc file not found! Make sure you've successfully run the setup_initial_condition method, or copied your own init_tracers.nc file into {self.mom_input_dir}."
+                )
+                return
+
+        elif "segment" in name:
+            try:
+                xr.open_mfdataset(
+                    str(self.mom_input_dir / f"*{name}*.nc"),
+                    decode_times=False,
+                    decode_cf=False,
+                )
+            except:
+                print(
+                    f"{name} files not found! Make sure you've successfully run the setup_ocean_state_boundaries method, or copied your own segment files file into {self.mom_input_dir}."
+                )
+                return None
+
+        ## If we get here, attribute wasn't found
+
         available_methods = [
             method for method in dir(self) if not method.startswith("__")
         ]
-        error_message = (
-            f"{name} method not found. Available methods are: {available_methods}"
-        )
+        error_message = f"{name} not found. Available methods and attributes are: {available_methods}"
         raise AttributeError(error_message)
 
     def _make_hgrid(self):
@@ -3259,7 +3306,7 @@ class segment:
         )
         segment_out[f"lat_{self.segment_name}"] = (
             [f"ny_{self.segment_name}", f"nx_{self.segment_name}"],
-            self.coords.lon.expand_dims(
+            self.coords.lat.expand_dims(
                 dim="blank", axis=self.coords.attrs["axis_to_expand"] - 2
             ).data,
         )
