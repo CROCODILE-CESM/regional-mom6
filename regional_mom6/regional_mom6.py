@@ -113,7 +113,7 @@ def load_experiment(config_file_path):
     expt = experiment.create_empty()
 
     print("Setting Default Variables.....")
-    expt.expt_name = config_dict["name"]
+    expt.expt_name = config_dict["expt_name"]
     try:
         expt.longitude_extent = tuple(config_dict["longitude_extent"])
         expt.latitude_extent = tuple(config_dict["latitude_extent"])
@@ -126,9 +126,11 @@ def load_experiment(config_file_path):
         expt.date_range[1] = dt.datetime.strptime(expt.date_range[1], "%Y-%m-%d")
     except:
         expt.date_range = None
-    expt.mom_run_dir = Path(config_dict["run_dir"])
-    expt.mom_input_dir = Path(config_dict["input_dir"])
-    expt.toolpath_dir = Path(config_dict["toolpath_dir"])
+    expt.mom_run_dir = Path(os.path.join("mom_run","config_expt"))
+    expt.mom_input_dir = Path(os.path.join("mom_input","config_expt"))
+    os.makedirs(expt.mom_run_dir, exist_ok=True)
+    os.makedirs(expt.mom_input_dir, exist_ok=True)
+
     expt.resolution = config_dict["resolution"]
     expt.number_vertical_layers = config_dict["number_vertical_layers"]
     expt.layer_thickness_ratio = config_dict["layer_thickness_ratio"]
@@ -140,65 +142,11 @@ def load_experiment(config_file_path):
     expt.minimum_depth = config_dict["minimum_depth"]
     expt.tidal_constituents = config_dict["tidal_constituents"]
 
-    print("Checking for hgrid and vgrid....")
-    if os.path.exists(config_dict["hgrid"]):
-        print("Found")
-        expt.hgrid = xr.open_dataset(config_dict["hgrid"])
-    else:
-        print("Hgrid not found, call _make_hgrid when you're ready.")
-        expt.hgrid = None
-    if os.path.exists(config_dict["vgrid"]):
-        print("Found")
-        expt.vgrid = xr.open_dataset(config_dict["vgrid"])
-    else:
-        print("Vgrid not found, call _make_vgrid when ready")
-        expt.vgrid = None
+    print("Create hgrid and vgrid....")
 
-    print("Checking for bathymetry...")
-    if config_dict["bathymetry"] is not None and os.path.exists(
-        config_dict["bathymetry"]
-    ):
-        print("Found")
-        expt.bathymetry = xr.open_dataset(config_dict["bathymetry"])
-    else:
-        print(
-            "Bathymetry not found. Please provide bathymetry, or call setup_bathymetry method to set up bathymetry."
-        )
+    expt.hgrid = expt._make_hgrid()
+    expt.vgrid =  expt._make_vgrid()
 
-    print("Checking for ocean state files....")
-    found = True
-    for path in config_dict["ocean_state"]:
-        if not os.path.exists(path):
-            found = False
-            print(
-                "At least one ocean state file not found. Please provide ocean state files, or call setup_ocean_state_boundaries method to set up ocean state."
-            )
-            break
-    if found:
-        print("Found")
-    found = True
-    print("Checking for initial condition files....")
-    for path in config_dict["initial_conditions"]:
-        if not os.path.exists(path):
-            found = False
-            print(
-                "At least one initial condition file not found. Please provide initial condition files, or call setup_initial_condition method to set up initial condition."
-            )
-            break
-    if found:
-        print("Found")
-    found = True
-    print("Checking for tides files....")
-    for path in config_dict["tides"]:
-        if not os.path.exists(path):
-            found = False
-            print(
-                "At least one tides file not found. If you would like tides, call setup_tides_boundaries method to set up tides"
-            )
-            break
-    if found:
-        print("Found")
-    found = True
 
     return expt
 
@@ -1082,14 +1030,6 @@ class experiment:
         """
         if not quiet:
             print("Writing Config File.....")
-        ## check if files exist
-        vgrid_path = None
-        hgrid_path = None
-        if os.path.exists(self.mom_input_dir / "vcoord.nc"):
-            vgrid_path = self.mom_input_dir / "vcoord.nc"
-        if os.path.exists(self.mom_input_dir / "hgrid.nc"):
-            hgrid_path = self.mom_input_dir / "hgrid.nc"
-
         try:
             date_range = [
                 self.date_range[0].strftime("%Y-%m-%d"),
@@ -1098,13 +1038,10 @@ class experiment:
         except:
             date_range = None
         config_dict = {
-            "name": self.expt_name,
+            "expt_name": self.expt_name,
             "date_range": date_range,
             "latitude_extent": self.latitude_extent,
             "longitude_extent": self.longitude_extent,
-            "run_dir": str(self.mom_run_dir),
-            "input_dir": str(self.mom_input_dir),
-            "toolpath_dir": str(self.toolpath_dir),
             "resolution": self.resolution,
             "number_vertical_layers": self.number_vertical_layers,
             "layer_thickness_ratio": self.layer_thickness_ratio,
@@ -1114,11 +1051,6 @@ class experiment:
             "ocean_mask": self.ocean_mask,
             "layout": self.layout,
             "minimum_depth": self.minimum_depth,
-            "vgrid": str(vgrid_path),
-            "hgrid": str(hgrid_path),
-            "ocean_state": self.ocean_state_boundaries,
-            "tides": self.tides_boundaries,
-            "initial_conditions": self.initial_condition,
             "tidal_constituents": self.tidal_constituents,
         }
         if export:
