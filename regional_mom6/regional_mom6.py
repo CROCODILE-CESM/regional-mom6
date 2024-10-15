@@ -104,7 +104,25 @@ def find_MOM6_rectangular_orientation(input):
 ## Load Experiment Function
 
 
-def load_experiment(config_file_path):
+def load_experiment(
+    config_file_path,
+    mom_input_folder=None,
+    mom_run_folder=None,
+    create_hgrid_and_vgrid=True,
+):
+    """
+    Load an experiment variables from a config file and generate hgrid/vgrid.
+    Computer specific functionality eliminates the ability to pass file paths.
+    Basically another way to initialize. Sets a default folder of "mom_input/from_config" and "mom_run/from_config" unless specified
+
+    Args:
+        config_file_path (str): Path to the config file.
+        mom_input_folder (str): Path to the MOM6 input folder. Default is "mom_input/from_config".
+        mom_run_folder (str): Path to the MOM6 run folder. Default is "mom_run/from_config".
+        create_hgrid_and_vgrid (bool): Whether to create the hgrid and vgrid. Default is True.
+    Returns:
+        experiment: An experiment object with the fields from the config loaded in.
+    """
     print("Reading from config file....")
     with open(config_file_path, "r") as f:
         config_dict = json.load(f)
@@ -122,12 +140,21 @@ def load_experiment(config_file_path):
         expt.latitude_extent = None
     try:
         expt.date_range = config_dict["date_range"]
-        expt.date_range[0] = dt.datetime.strptime(expt.date_range[0], "%Y-%m-%d")
-        expt.date_range[1] = dt.datetime.strptime(expt.date_range[1], "%Y-%m-%d")
+        expt.date_range[0] = dt.datetime.strptime(
+            expt.date_range[0], "%Y-%m-%d %H:%M:%S"
+        )
+        expt.date_range[1] = dt.datetime.strptime(
+            expt.date_range[1], "%Y-%m-%d %H:%M:%S"
+        )
     except:
         expt.date_range = None
-    expt.mom_run_dir = Path(os.path.join("mom_run","config_expt"))
-    expt.mom_input_dir = Path(os.path.join("mom_input","config_expt"))
+
+    if mom_input_folder is None:
+        mom_input_folder = Path(os.path.join("mom_run", "from_config"))
+    if mom_run_folder is None:
+        mom_run_folder = Path(os.path.join("mom_input", "from_config"))
+    expt.mom_run_dir = Path(mom_run_folder)
+    expt.mom_input_dir = Path(mom_input_folder)
     os.makedirs(expt.mom_run_dir, exist_ok=True)
     os.makedirs(expt.mom_input_dir, exist_ok=True)
 
@@ -142,12 +169,14 @@ def load_experiment(config_file_path):
     expt.minimum_depth = config_dict["minimum_depth"]
     expt.tidal_constituents = config_dict["tidal_constituents"]
 
-    print("Create hgrid and vgrid....")
+    if create_hgrid_and_vgrid:
+        print("Creating hgrid and vgrid....")
+        expt.hgrid = expt._make_hgrid()
+        expt.vgrid = expt._make_vgrid()
+    else:
+        print("Skipping hgrid and vgrid creation....")
 
-    expt.hgrid = expt._make_hgrid()
-    expt.vgrid =  expt._make_vgrid()
-
-
+    print("Done!")
     return expt
 
 
@@ -588,7 +617,7 @@ class experiment:
         repeat_year_forcing=False,
         minimum_depth=4,
         tidal_constituents=["M2"],
-        name=None,
+        expt_name=None,
     ):
         """
         Substitute init method to creates an empty expirement object, with the opportunity to override whatever values wanted.
@@ -609,10 +638,10 @@ class experiment:
             hgrid_type=None,
             repeat_year_forcing=None,
             tidal_constituents=None,
-            name=None,
+            expt_name=None,
         )
 
-        expt.expt_name = name
+        expt.expt_name = expt_name
         expt.tidal_constituents = tidal_constituents
         expt.repeat_year_forcing = repeat_year_forcing
         expt.hgrid_type = hgrid_type
@@ -651,7 +680,7 @@ class experiment:
         minimum_depth=4,
         tidal_constituents=["M2"],
         create_empty=False,
-        name=None,
+        expt_name=None,
     ):
 
         # Creates empty experiment object for testing and experienced user manipulation.
@@ -663,7 +692,7 @@ class experiment:
 
         # ## Set up the experiment with no config file
         ## in case list was given, convert to tuples
-        self.expt_name = name
+        self.expt_name = expt_name
         self.date_range = tuple(date_range)
 
         self.mom_run_dir = Path(mom_run_dir)
@@ -1025,15 +1054,22 @@ class experiment:
     def write_config_file(self, path=None, export=True, quiet=False):
         """
         Write a configuration file for the experiment. This is a simple json file
-        that contains the expirment object information to allow for reproducibility, to pick up where a user left off, and
-        to make information about the expirement readable.
+        that contains the expirment varuavke information to allow for easy pass off to other users, with a strict computer independence restriction.
+        It also makes information about the expirement readable, and is good for just printing out information about the experiment.
+
+        Args:
+            path (Optional[str]): Path to write the config file to. If not provided, the file is written to the ``mom_run_dir`` directory.
+            export (Optional[bool]): If ``True`` (default), the configuration file is written to disk on the given path
+            quiet (Optional[bool]): If ``True``, no print statements are made.
+        Returns:
+            Dict: A dictionary containing the configuration information.
         """
         if not quiet:
             print("Writing Config File.....")
         try:
             date_range = [
-                self.date_range[0].strftime("%Y-%m-%d"),
-                self.date_range[1].strftime("%Y-%m-%d"),
+                self.date_range[0].strftime("%Y-%m-%d %H:%M:%S"),
+                self.date_range[1].strftime("%Y-%m-%d %H:%M:%S"),
             ]
         except:
             date_range = None
