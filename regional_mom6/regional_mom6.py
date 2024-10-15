@@ -815,7 +815,7 @@ class experiment:
 
         elif "segment" in name:
             try:
-                xr.open_mfdataset(
+                return xr.open_mfdataset(
                     str(self.mom_input_dir / f"*{name}*.nc"),
                     decode_times=False,
                     decode_cf=False,
