@@ -3,6 +3,7 @@ import regional_mom6 as rmom6
 from pathlib import Path
 import os
 import json
+import shutil
 
 
 def test_write_config():
@@ -61,6 +62,9 @@ def test_write_config():
     assert config_dict["repeat_year_forcing"] == False
     assert config_dict["tidal_constituents"] == ["M2"]
     assert config_dict["expt_name"] == "test"
+    shutil.rmtree(run_dir)
+    shutil.rmtree(input_dir)
+    shutil.rmtree(data_path)
 
 
 def test_load_config():
@@ -106,8 +110,8 @@ def test_load_config():
         toolpath_dir="",
     )
     path = "testing_config.json"
-
-    new_expt = rmom6.load_experiment(os.path.join(path))
+    config_expt = expt.write_config_file(path)
+    new_expt = rmom6.create_experiment_from_config(os.path.join(path))
     assert str(new_expt) == str(expt)
     print(new_expt.vgrid)
     print(expt.vgrid)
@@ -119,3 +123,8 @@ def test_load_config():
     assert os.path.exists(new_expt.mom_input_dir / "hgrid.nc") & os.path.exists(
         new_expt.mom_input_dir / "vcoord.nc"
     )
+    shutil.rmtree(run_dir)
+    shutil.rmtree(input_dir)
+    shutil.rmtree(data_path)
+    shutil.rmtree(new_expt.mom_run_dir)
+    shutil.rmtree(new_expt.mom_input_dir)

@@ -30,7 +30,7 @@ __all__ = [
     "generate_rectangular_hgrid",
     "experiment",
     "segment",
-    "load_experiment",
+    "create_experiment_from_config",
 ]
 
 
@@ -104,7 +104,7 @@ def find_MOM6_rectangular_orientation(input):
 ## Load Experiment Function
 
 
-def load_experiment(
+def create_experiment_from_config(
     config_file_path,
     mom_input_folder=None,
     mom_run_folder=None,
@@ -2624,10 +2624,19 @@ class experiment:
                             str(original_MOM_file_dict[var]["value"]),
                             str(MOM_file_dict[var]["value"]),
                         )
-                        lines[jj] = lines[jj].replace(
-                            original_MOM_file_dict[var]["comment"],
-                            str(MOM_file_dict[var]["comment"]),
-                        )
+                        if original_MOM_file_dict[var]["comment"] != None:
+                            lines[jj] = lines[jj].replace(
+                                original_MOM_file_dict[var]["comment"],
+                                str(MOM_file_dict[var]["comment"]),
+                            )
+                        else:
+                            lines[jj] = (
+                                lines[jj].replace("\n", "")
+                                + " !"
+                                + str(MOM_file_dict[var]["comment"])
+                                + "\n"
+                            )
+
                         print(
                             "Changed",
                             var,
