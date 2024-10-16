@@ -1685,6 +1685,7 @@ class experiment:
         tidal_filename,
         tidal_constituents="read_from_expt_init",
         boundary_type="rectangle",
+        boundaries=["south", "north", "west", "east"],
     ):
         """
         This function:
