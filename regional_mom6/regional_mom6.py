@@ -2223,7 +2223,6 @@ class experiment:
         overwrite=False,
         with_tides=False,
         boundaries=["south", "north", "west", "east"],
-        premade_rundir_path_arg=None,
     ):
         """
         Set up the run directory for MOM6. Either copy a pre-made set of files, or modify
@@ -2241,14 +2240,11 @@ class experiment:
         """
 
         ## Get the path to the regional_mom package on this computer
-        if premade_rundir_path_arg is None:
-            premade_rundir_path = Path(
-                importlib.resources.files("regional_mom6")
-                / "demos"
-                / "premade_run_directories"
-            )
-        else:
-            premade_rundir_path = premade_rundir_path_arg
+        premade_rundir_path = Path(
+            importlib.resources.files("regional_mom6")
+            / "demos"
+            / "premade_run_directories"
+        )
         if not premade_rundir_path.exists():
             print("Could not find premade run directories at ", premade_rundir_path)
             print(
