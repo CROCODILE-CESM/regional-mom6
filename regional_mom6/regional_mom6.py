@@ -590,7 +590,6 @@ class experiment:
         minimum_depth=4,
         tidal_constituents=["M2"],
         expt_name=None,
-        boundaries=["south", "north", "west", "east"],
     ):
         """
         Substitute init method to creates an empty expirement object, with the opportunity to override whatever values wanted.
@@ -655,7 +654,6 @@ class experiment:
         tidal_constituents=["M2"],
         create_empty=False,
         expt_name=None,
-        boundaries=["south", "north", "west", "east"],
     ):
 
         # Creates empty experiment object for testing and experienced user manipulation.
