@@ -631,8 +631,8 @@ class experiment:
         expt.longitude_extent = longitude_extent
         expt.ocean_mask = None
         expt.layout = None
-        expt.boundaries = boundaries
         self.segments = {}
+        self.boundaries = boundaries
         return expt
 
     def __init__(
@@ -729,14 +729,7 @@ class experiment:
             self.vgrid = self._make_vgrid()
 
         self.segments = {}
-
-        for b in boundaries:
-            self.segments[b] = None
-        self.segments["direction_dir"] = {}
-        counter = 1
-        for b in self.segments.keys():
-            self.segments["direction_dir"][b] = counter
-            counter += 1
+        self.boundaries = boundaries
 
         # create additional directories and links
         (self.mom_input_dir / "weights").mkdir(exist_ok=True)
@@ -820,11 +813,16 @@ class experiment:
         Convert between MOM6 boundary and the specific segment number needed, or the inverse
         """
 
-        direction_dir_inv = {v: k for k, v in self.segments["direction_dir"].items()}
+        direction_dir = {}
+        counter = 1
+        for b in self.boundaries:
+            direction_dir[b] = counter
+            counter += 1
+        direction_dir_inv = {v: k for k, v in direction_dir.items()}
 
         if type(input) == str:
             try:
-                return self.segments["direction_dir"][input]
+                return direction_dir[input]
             except:
                 raise ValueError(
                     "Invalid Input. Did you spell the direction wrong, it should be lowercase?"
@@ -1473,7 +1471,7 @@ class experiment:
             download_path=raw_boundaries_path,
             modify_existing=False,  # This is the first line, so start bash script anew
         )
-        if "east" in self.segments.keys():
+        if "east" in self.boundaries:
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nxp=-1).min()),
@@ -1487,7 +1485,7 @@ class experiment:
                 segment_name="east_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "west" in self.segments.keys():
+        if "west" in self.boundaries:
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nxp=0).min()),
@@ -1501,7 +1499,7 @@ class experiment:
                 segment_name="west_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "south" in self.segments.keys():
+        if "south" in self.boundaries:
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nyp=0).min()),
@@ -1515,7 +1513,7 @@ class experiment:
                 segment_name="south_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "north" in self.segments.keys():
+        if "north" in self.boundaries:
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nyp=-1).min()),
@@ -1557,18 +1555,18 @@ class experiment:
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             boundary_type (Optional[str]): Type of box around region. Currently, only ``'rectangular'`` is supported.
         """
-        for i in self.segments.keys():
+        for i in self.boundaries:
             if i not in ["south", "north", "west", "east"]:
                 raise ValueError(
                     f"Invalid boundary direction: {i}. Must be one of ['south', 'north', 'west', 'east']"
                 )
 
-        if len(self.segments.keys()) < 4:
+        if len(self.boundaries) < 4:
             print(
                 "NOTE: the 'setup_run_directories' method assumes that you have four boundaries. You'll need to modify the MOM_input file manually to reflect the number of boundaries you have, and their orientations. You should be able to find the relevant section in the MOM_input file by searching for 'segment_'. Ensure that the segment names match those in your inputdir/forcing folder"
             )
 
-        if len(self.segments.keys()) > 4:
+        if len(self.boundaries) > 4:
             raise ValueError(
                 "This method only supports up to four boundaries. To set up more complex boundary shapes you can manually call the 'simple_boundary' method for each boundary."
             )
@@ -1578,7 +1576,7 @@ class experiment:
             )
 
         # Now iterate through our four boundaries
-        for orientation in self.segments.keys():
+        for orientation in self.boundaries:
             self.setup_single_boundary(
                 Path(
                     os.path.join(
@@ -1726,11 +1724,11 @@ class experiment:
             dims=["time"],
         )
         # Initialize or find boundary segment
-        for b in self.segments.keys():
+        for b in self.boundaries:
             print("Processing {} boundary...".format(b), end="")
 
             # If the GLORYS ocean_state has already created segments, we don't create them again.
-            if self.segments[b] is None:  # I.E. not set yet
+            if b not in self.segments.keys():  # I.E. not set yet
                 seg = segment(
                     hgrid=self.hgrid,
                     infile=None,  # location of raw boundary
@@ -2393,7 +2391,7 @@ class experiment:
         MOM_override_dict["BRUSHCUTTER_MODE"]["value"] = "True"
 
         # Define Specific Segments
-        for seg in self.segments.keys():
+        for seg in self.boundaries:
             ind_seg = self.find_MOM6_rectangular_orientation(seg)
             key_start = "OBC_SEGMENT_00" + str(ind_seg)
             ## Position and Config
