@@ -590,6 +590,7 @@ class experiment:
         minimum_depth=4,
         tidal_constituents=["M2"],
         expt_name=None,
+        boundaries=["south", "north", "west", "east"],
     ):
         """
         Substitute init method to creates an empty expirement object, with the opportunity to override whatever values wanted.
@@ -611,7 +612,6 @@ class experiment:
             repeat_year_forcing=None,
             tidal_constituents=None,
             expt_name=None,
-            boundaries=["south", "north", "west", "east"],
         )
 
         expt.expt_name = expt_name
@@ -728,9 +728,8 @@ class experiment:
         else:
             self.vgrid = self._make_vgrid()
 
-        self.segments = (
-            {}
-        )  # Holds segements for use in setting up the ocean state boundary conditions (GLORYS) and the tidal boundary conditions (TPXO)
+        self.segments = {}
+        # Holds segements for use in setting up the ocean state boundary conditions (GLORYS) and the tidal boundary conditions (TPXO)
 
         for b in boundaries:
             self.segments[b] = None
@@ -1452,9 +1451,7 @@ class experiment:
 
         return
 
-    def get_glorys_rectangular(
-        self, raw_boundaries_path, boundaries=["south", "north", "west", "east"]
-    ):
+    def get_glorys_rectangular(self, raw_boundaries_path):
         """
         This function is a wrapper for `get_glorys_data`, calling this function once for each of the rectangular boundary segments and the initial condition. For more complex boundary shapes, call `get_glorys_data` directly for each of your boundaries that aren't parallel to lines of constant latitude or longitude. For example, for an angled Northern boundary that spans multiple latitudes, you'll need to download a wider rectangle containing the entire boundary.
 
@@ -1476,7 +1473,7 @@ class experiment:
             download_path=raw_boundaries_path,
             modify_existing=False,  # This is the first line, so start bash script anew
         )
-        if "east" in boundaries:
+        if "east" in self.segments.keys():
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nxp=-1).min()),
@@ -1490,7 +1487,7 @@ class experiment:
                 segment_name="east_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "west" in boundaries:
+        if "west" in self.segments.keys():
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nxp=0).min()),
@@ -1504,7 +1501,7 @@ class experiment:
                 segment_name="west_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "south" in boundaries:
+        if "south" in self.segments.keys():
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nyp=0).min()),
@@ -1518,7 +1515,7 @@ class experiment:
                 segment_name="south_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "north" in boundaries:
+        if "north" in self.segments.keys():
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nyp=-1).min()),
@@ -1542,7 +1539,6 @@ class experiment:
         self,
         raw_boundaries_path,
         varnames,
-        boundaries=["south", "north", "west", "east"],
         arakawa_grid="A",
         boundary_type="rectangular",
     ):
@@ -1561,18 +1557,18 @@ class experiment:
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             boundary_type (Optional[str]): Type of box around region. Currently, only ``'rectangular'`` is supported.
         """
-        for i in boundaries:
+        for i in self.segments.keys():
             if i not in ["south", "north", "west", "east"]:
                 raise ValueError(
                     f"Invalid boundary direction: {i}. Must be one of ['south', 'north', 'west', 'east']"
                 )
 
-        if len(boundaries) < 4:
+        if len(self.segments.keys()) < 4:
             print(
                 "NOTE: the 'setup_run_directories' method assumes that you have four boundaries. You'll need to modify the MOM_input file manually to reflect the number of boundaries you have, and their orientations. You should be able to find the relevant section in the MOM_input file by searching for 'segment_'. Ensure that the segment names match those in your inputdir/forcing folder"
             )
 
-        if len(boundaries) > 4:
+        if len(self.segments.keys()) > 4:
             raise ValueError(
                 "This method only supports up to four boundaries. To set up more complex boundary shapes you can manually call the 'simple_boundary' method for each boundary."
             )
@@ -1580,8 +1576,7 @@ class experiment:
             raise ValueError(
                 "Only rectangular boundaries are supported by this method. To set up more complex boundary shapes you can manually call the 'simple_boundary' method for each boundary."
             )
-        for b in boundaries:
-            self.segments[b] = None
+
         # Now iterate through our four boundaries
         for orientation in self.segments.keys():
             self.setup_single_boundary(
@@ -1730,8 +1725,6 @@ class experiment:
             ),  # Import pandas for this shouldn't be a big deal b/c it's already required in rm6 dependencies
             dims=["time"],
         )
-        boundaries = ["south", "north", "west", "east"]
-
         # Initialize or find boundary segment
         for b in self.segments.keys():
             print("Processing {} boundary...".format(b), end="")
