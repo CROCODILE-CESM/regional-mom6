@@ -73,7 +73,6 @@ def convert_to_tpxo_tidal_constituents(tidal_constituents):
     return list_of_ints
 
 
-
 ## Load Experiment Function
 
 
@@ -591,7 +590,6 @@ class experiment:
         minimum_depth=4,
         tidal_constituents=["M2"],
         expt_name=None,
-        
     ):
         """
         Substitute init method to creates an empty expirement object, with the opportunity to override whatever values wanted.
@@ -613,7 +611,7 @@ class experiment:
             repeat_year_forcing=None,
             tidal_constituents=None,
             expt_name=None,
-            boundaries=["south", "north", "west", "east"]
+            boundaries=["south", "north", "west", "east"],
         )
 
         expt.expt_name = expt_name
@@ -657,7 +655,7 @@ class experiment:
         tidal_constituents=["M2"],
         create_empty=False,
         expt_name=None,
-        boundaries=["south", "north", "west", "east"]
+        boundaries=["south", "north", "west", "east"],
     ):
 
         # Creates empty experiment object for testing and experienced user manipulation.
@@ -733,7 +731,6 @@ class experiment:
         self.segments = (
             {}
         )  # Holds segements for use in setting up the ocean state boundary conditions (GLORYS) and the tidal boundary conditions (TPXO)
-
 
         for b in boundaries:
             self.segments[b] = None
@@ -814,8 +811,7 @@ class experiment:
         error_message = f"{name} not found. Available methods and attributes are: {available_methods}"
         raise AttributeError(error_message)
 
-
-    def find_MOM6_rectangular_orientation(self,input):
+    def find_MOM6_rectangular_orientation(self, input):
         """
         Convert between MOM6 boundary and the specific segment number needed, or the inverse
         """
@@ -824,7 +820,7 @@ class experiment:
         for b in self.segments.keys():
             direction_dir[b] = counter
             counter += 1
-        
+
         direction_dir_inv = {v: k for k, v in direction_dir.items()}
 
         if type(input) == str:
@@ -841,7 +837,6 @@ class experiment:
                 raise ValueError("Invalid Input. Did you pick a number 1 through 4?")
         else:
             raise ValueError("Invalid type of Input, can only be string or int.")
-
 
     def _make_hgrid(self):
         """
@@ -1639,7 +1634,7 @@ class experiment:
             )
         if boundary_type != "simple":
             raise ValueError("Only simple boundaries are supported by this method.")
-        self.segments[orientation]  = segment(
+        self.segments[orientation] = segment(
             hgrid=self.hgrid,
             infile=path_to_bc,  # location of raw boundary
             outfolder=self.mom_input_dir,
@@ -1742,7 +1737,7 @@ class experiment:
             print("Processing {} boundary...".format(b), end="")
 
             # If the GLORYS ocean_state has already created segments, we don't create them again.
-            if self.segments[b] is None: # I.E. not set yet
+            if self.segments[b] is None:  # I.E. not set yet
                 seg = segment(
                     hgrid=self.hgrid,
                     infile=None,  # location of raw boundary
