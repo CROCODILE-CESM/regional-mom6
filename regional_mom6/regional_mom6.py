@@ -729,10 +729,15 @@ class experiment:
             self.vgrid = self._make_vgrid()
 
         self.segments = {}
-        # Holds segements for use in setting up the ocean state boundary conditions (GLORYS) and the tidal boundary conditions (TPXO)
 
         for b in boundaries:
             self.segments[b] = None
+        self.segments["direction_dir"] = {}
+        counter = 1
+        for b in self.segments.keys():
+            self.segments["direction_dir"][b] = counter
+            counter += 1
+
         # create additional directories and links
         (self.mom_input_dir / "weights").mkdir(exist_ok=True)
         (self.mom_input_dir / "forcing").mkdir(exist_ok=True)
@@ -814,17 +819,12 @@ class experiment:
         """
         Convert between MOM6 boundary and the specific segment number needed, or the inverse
         """
-        direction_dir = {}
-        counter = 1
-        for b in self.segments.keys():
-            direction_dir[b] = counter
-            counter += 1
 
-        direction_dir_inv = {v: k for k, v in direction_dir.items()}
+        direction_dir_inv = {v: k for k, v in self.segments["direction_dir"].items()}
 
         if type(input) == str:
             try:
-                return direction_dir[input]
+                return self.segments["direction_dir"][input]
             except:
                 raise ValueError(
                     "Invalid Input. Did you spell the direction wrong, it should be lowercase?"
