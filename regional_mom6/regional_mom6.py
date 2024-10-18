@@ -2505,7 +2505,7 @@ class experiment:
         return
 
     def change_MOM_parameter(
-        self, param_name, param_value=None, comment=None, delete=False
+        self, param_name, param_value=None, comment=None, override=True, delete=False
     ):
         """
         *Requires already copied MOM parameter files in the run directory*
@@ -2542,6 +2542,7 @@ class experiment:
 
             MOM_override_dict[param_name]["value"] = param_value
             MOM_override_dict[param_name]["comment"] = comment
+            MOM_override_dict[param_name]["override"] = override
         else:
             if param_name in MOM_override_dict.keys():
                 original_val = MOM_override_dict[param_name]["value"]
@@ -2613,6 +2614,11 @@ class experiment:
                     if "#override" in var:
                         var = var.replace("#override", "")
                         var = var.strip()
+                    else:
+                        # As in there wasn't an override before but we want one
+                        if MOM_file_dict[var]["override"]:
+                            lines[jj] = "#override " + lines[jj]
+                            print("Added override to variable " + var + "!")
                     if var in MOM_file_dict.keys() and (
                         str(MOM_file_dict[var]["value"])
                     ) != str(original_MOM_file_dict[var]["value"]):
