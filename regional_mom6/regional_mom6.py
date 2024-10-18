@@ -1741,6 +1741,7 @@ class experiment:
                     startdate=self.date_range[0],
                     repeat_year_forcing=self.repeat_year_forcing,
                 )
+                self.segments[b] = seg
             else:
                 seg = self.segments[b]
 
@@ -2377,7 +2378,7 @@ class experiment:
 
         # Define number of OBC segments
         MOM_override_dict["OBC_NUMBER_OF_SEGMENTS"]["value"] = len(
-            self.segment.keys()
+            self.boundaries
         )  # This means that each SEGMENT_00{num} has to be configured to point to the right file, which based on our other functions needs to be specified.
 
         # More OBC Consts
