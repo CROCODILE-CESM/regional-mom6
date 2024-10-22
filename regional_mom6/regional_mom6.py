@@ -140,6 +140,7 @@ def create_experiment_from_config(
     expt.layout = None
     expt.minimum_depth = config_dict["minimum_depth"]
     expt.tidal_constituents = config_dict["tidal_constituents"]
+    expt.boundaries = config_dict["boundaries"]
 
     if create_hgrid_and_vgrid:
         print("Creating hgrid and vgrid....")
@@ -1089,6 +1090,7 @@ class experiment:
             "layout": self.layout,
             "minimum_depth": self.minimum_depth,
             "tidal_constituents": self.tidal_constituents,
+            "boundaries": self.boundaries,
         }
         if export:
             if path is not None:
@@ -1555,6 +1557,10 @@ class experiment:
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             boundary_type (Optional[str]): Type of box around region. Currently, only ``'rectangular'`` is supported.
         """
+        if boundary_type != "rectangular":
+            raise ValueError(
+                "Only rectangular boundaries are supported by this method. To set up more complex boundary shapes you can manually call the 'simple_boundary' method for each boundary."
+            )
         for i in self.boundaries:
             if i not in ["south", "north", "west", "east"]:
                 raise ValueError(
@@ -1569,10 +1575,6 @@ class experiment:
         if len(self.boundaries) > 4:
             raise ValueError(
                 "This method only supports up to four boundaries. To set up more complex boundary shapes you can manually call the 'simple_boundary' method for each boundary."
-            )
-        if boundary_type != "rectangular":
-            raise ValueError(
-                "Only rectangular boundaries are supported by this method. To set up more complex boundary shapes you can manually call the 'simple_boundary' method for each boundary."
             )
 
         # Now iterate through our four boundaries
