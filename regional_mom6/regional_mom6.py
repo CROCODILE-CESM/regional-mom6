@@ -3442,24 +3442,19 @@ class segment:
         # There is probably a complicated trig identity for this? But
         # this works too.
 
-        if self.orientation in ["south", "north"]:
-            angle = self.coords["angle"]
-        elif self.orientation in ["west", "east"]:
-            angle = self.coords["angle"]
+
+        angle = self.coords["angle"]
 
         # Convert complex u and v to ellipse,
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
-        print(ucplex)
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
-
         INC -= angle.data[np.newaxis, :]
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
-        print(ua)
         ds_ap = xr.Dataset(
             {f"uamp_{self.segment_name}": ua, f"vamp_{self.segment_name}": va}
         )
-        # up, vp aren't dataarrays
+        # up, vp aren't dataarraysf
         ds_ap[f"uphase_{self.segment_name}"] = (
             ("constituent", self.coords.attrs["locations_name"]),
             up,
