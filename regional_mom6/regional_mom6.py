@@ -2254,11 +2254,10 @@ class experiment:
             if not (self.mom_input_dir / "forcing").exists():
                 all_files = os.listdir(Path(self.mom_input_dir))
             else:
-                all_files = os.listdir(Path(self.mom_input_dir / "forcing"))+ os.listdir(Path(self.mom_input_dir))
-            tidal_files_exist = any(
-                "tidal" in filename
-                for filename in all_files
-            )
+                all_files = os.listdir(
+                    Path(self.mom_input_dir / "forcing")
+                ) + os.listdir(Path(self.mom_input_dir))
+            tidal_files_exist = any("tidal" in filename for filename in all_files)
             if not tidal_files_exist:
                 raise (
                     "No files with 'tidal' in their names found in the forcing or input directory. If you meant to use tides, please run the setup_tides_rectangle_boundaries method first. That does output some tidal files."
@@ -3441,13 +3440,13 @@ class segment:
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
         # There is probably a complicated trig identity for this? But
-        # this works too. 
-        
-        if self.orientation in ['south', 'north']:
-            angle = self.coords['angle']
-        elif self.orientation in ['west', 'east']:
-            angle = self.coords['angle']
-        
+        # this works too.
+
+        if self.orientation in ["south", "north"]:
+            angle = self.coords["angle"]
+        elif self.orientation in ["west", "east"]:
+            angle = self.coords["angle"]
+
         # Convert complex u and v to ellipse,
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
