@@ -3453,6 +3453,7 @@ class segment:
         print(ucplex)
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
 
+        INC -= angle.data[np.newaxis, :]
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
         print(ua)
         ds_ap = xr.Dataset(
