@@ -2251,12 +2251,13 @@ class experiment:
 
         # Check if we can implement tides
         if with_tides:
+            if not (self.mom_input_dir / "forcing").exists():
+                all_files = os.listdir(Path(self.mom_input_dir))
+            else:
+                all_files = os.listdir(Path(self.mom_input_dir / "forcing"))+ os.listdir(Path(self.mom_input_dir))
             tidal_files_exist = any(
                 "tidal" in filename
-                for filename in (
-                    os.listdir(Path(self.mom_input_dir / "forcing"))
-                    + os.listdir(Path(self.mom_input_dir))
-                )
+                for filename in all_files
             )
             if not tidal_files_exist:
                 raise (
@@ -3439,13 +3440,22 @@ class segment:
         # Convert complex u and v to ellipse,
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
+        # There is probably a complicated trig identity for this? But
+        # this works too. 
+        
+        if self.orientation in ['south', 'north']:
+            angle = self.coords['angle']
+        elif self.orientation in ['west', 'east']:
+            angle = self.coords['angle']
+        
+        # Convert complex u and v to ellipse,
+        # rotate ellipse from earth-relative to model-relative,
+        # and convert ellipse back to amplitude and phase.
+        print(ucplex)
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
 
-        # Rotate to the model grid by adjusting the inclination.
-        # Requries that angle is in radians.
-
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
-
+        print(ua)
         ds_ap = xr.Dataset(
             {f"uamp_{self.segment_name}": ua, f"vamp_{self.segment_name}": va}
         )
