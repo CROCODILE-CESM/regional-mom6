@@ -1,5 +1,6 @@
 import numpy as np
-
+import logging
+import sys
 
 def vecdot(v1, v2):
     """Return the dot product of vectors ``v1`` and ``v2``.
@@ -294,3 +295,24 @@ def ep2ap(SEMA, ECC, INC, PHA):
     vp = -np.angle(cv)
 
     return ua, va, up, vp
+
+def setup_logger(name: str) -> logging.Logger:
+    """
+    Setup general config for a logger.
+    """
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+    if not logger.hasHandlers():
+        # Create a handler to print to stdout (Jupyter captures stdout)
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.INFO)
+
+        # Create a formatter (optional)
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s.%(funcName)s - %(levelname)s - %(message)s"
+        )
+        handler.setFormatter(formatter)
+
+        # Add the handler to the logger
+        logger.addHandler(handler)
+    return logger

@@ -21,7 +21,7 @@ import glob
 from collections import defaultdict
 import json
 import copy
-
+import regridding as rgd
 warnings.filterwarnings("ignore")
 
 __all__ = [
@@ -1669,7 +1669,7 @@ class experiment:
         This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
          - Converted code for RM6 segment class
          - Implemented Horizontal Subsetting
-         - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, segment.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+         - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, self.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
 
 
         Original Code was sourced from:
@@ -3013,59 +3013,64 @@ class segment:
 
     def regrid_velocity_tracers(self):
         """
-        Cut out and interpolate the velocities and tracers
-        """
+    Cut out and interpolate the velocities and tracers
+    """
 
         rawseg = xr.open_dataset(self.infile, decode_times=False, engine="netcdf4")
+        coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
         if self.arakawa_grid == "A":
+
             rawseg = rawseg.rename({self.x: "lon", self.y: "lat"})
             ## In this case velocities and tracers all on same points
-            regridder = xe.Regridder(
+            regridder = rgd.create_regridder(
                 rawseg[self.u],
-                self.coords,
-                "bilinear",
-                locstream_out=True,
-                reuse_weights=False,
-                filename=self.outfolder
+                coords,
+                self.outfolder
                 / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
             )
 
-            segment_out = xr.merge(
-                [
-                    regridder(
-                        rawseg[
-                            [self.u, self.v, self.eta]
-                            + [self.tracers[i] for i in self.tracers]
-                        ]
-                    )
+            regridded = regridder(
+                rawseg[
+                    [self.u, self.v, self.eta]
+                    + [self.tracers[i] for i in self.tracers]
                 ]
+            )
+            rotated_u, rotated_v = self.rotate(
+                regridded[self.u], regridded[self.v]
+            )
+            rotated_ds = xr.Dataset(
+                {
+                    self.u: rotated_u,
+                    self.v: rotated_v,
+                }
+            )
+            segment_out = xr.merge(
+                [rotated_ds, regridded.drop_vars([self.u, self.v])]
             )
 
         if self.arakawa_grid == "B":
             ## All tracers on one grid, all velocities on another
-            regridder_velocity = xe.Regridder(
+            regridder_velocity = rgd.create_regridder(
                 rawseg[self.u].rename({self.xq: "lon", self.yq: "lat"}),
-                self.coords,
-                "bilinear",
-                locstream_out=True,
-                reuse_weights=False,
-                filename=self.outfolder
+                coords,
+                self.outfolder
                 / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
             )
-
-            regridder_tracer = xe.Regridder(
-                rawseg[self.tracers["salt"]].rename({self.xh: "lon", self.yh: "lat"}),
-                self.coords,
-                "bilinear",
-                locstream_out=True,
-                reuse_weights=False,
-                filename=self.outfolder
+            regridder_tracer = rgd.create_regridder(
+                rawseg[self.tracers["salt"]].rename(
+                    {self.xh: "lon", self.yh: "lat"}
+                ),
+                coords,
+                self.outfolder
                 / f"weights/bilinear_tracer_weights_{self.orientation}.nc",
             )
 
+
             velocities_out = regridder_velocity(
-                rawseg[[self.u, self.v]].rename({self.xq: "lon", self.yq: "lat"})
+                rawseg[[self.u, self.v]].rename(
+                    {self.xq: "lon", self.yq: "lat"}
+                )
             )
 
             velocities_out["u"], velocities_out["v"] = self.rotate(
@@ -3085,42 +3090,49 @@ class segment:
 
         if self.arakawa_grid == "C":
             ## All tracers on one grid, all velocities on another
-            regridder_uvelocity = xe.Regridder(
+            regridder_uvelocity = rgd.create_regridder(
                 rawseg[self.u].rename({self.xq: "lon", self.yh: "lat"}),
-                self.coords,
-                "bilinear",
-                locstream_out=True,
-                reuse_weights=False,
-                filename=self.outfolder
+                coords,
+                self.outfolder
                 / f"weights/bilinear_uvelocity_weights_{self.orientation}.nc",
             )
 
-            regridder_vvelocity = xe.Regridder(
+
+            regridder_vvelocity = rgd.create_regridder(
                 rawseg[self.v].rename({self.xh: "lon", self.yq: "lat"}),
-                self.coords,
-                "bilinear",
-                locstream_out=True,
-                reuse_weights=False,
-                filename=self.outfolder
+                coords,
+                self.outfolder
                 / f"weights/bilinear_vvelocity_weights_{self.orientation}.nc",
             )
 
-            regridder_tracer = xe.Regridder(
-                rawseg[self.tracers["salt"]].rename({self.xh: "lon", self.yh: "lat"}),
-                self.coords,
-                "bilinear",
-                locstream_out=True,
-                reuse_weights=False,
-                filename=self.outfolder
+            regridder_tracer = rgd.create_regridder(
+                rawseg[self.tracers["salt"]].rename(
+                    {self.xh: "lon", self.yh: "lat"}
+                ),
+                coords,
+                self.outfolder
                 / f"weights/bilinear_tracer_weights_{self.orientation}.nc",
             )
 
+            regridded_u = regridder_uvelocity(rawseg[[self.u]])
+            regridded_v = regridder_vvelocity(rawseg[[self.v]])
+
+            rotated_u, rotated_v = self.rotate(
+                regridded_u[self.u], regridded_v[self.v]
+            )
+            rotated_ds = xr.Dataset(
+                {
+                    self.u: rotated_u,
+                    self.v: rotated_v,
+                }
+            )
             segment_out = xr.merge(
                 [
-                    regridder_vvelocity(rawseg[[self.v]]),
-                    regridder_uvelocity(rawseg[[self.u]]),
+                    rotated_ds,
                     regridder_tracer(
-                        rawseg[[self.eta] + [self.tracers[i] for i in self.tracers]]
+                        rawseg[
+                            [self.eta] + [self.tracers[i] for i in self.tracers]
+                        ]
                     ),
                 ]
             )
@@ -3132,51 +3144,34 @@ class segment:
         del segment_out["lat"]
         ## Convert temperatures to celsius # use pint
         if (
-            np.nanmin(segment_out[self.tracers["temp"]].isel({self.time: 0, self.z: 0}))
+            np.nanmin(
+                segment_out[self.tracers["temp"]].isel({self.time: 0, self.z: 0})
+            )
             > 100
         ):
             segment_out[self.tracers["temp"]] -= 273.15
             segment_out[self.tracers["temp"]].attrs["units"] = "degrees Celsius"
 
         # fill in NaNs
-        segment_out = (
-            segment_out.ffill(self.z)
-            .interpolate_na(f"{self.coords.attrs['parallel']}_{self.segment_name}")
-            .ffill(f"{self.coords.attrs['parallel']}_{self.segment_name}")
-            .bfill(f"{self.coords.attrs['parallel']}_{self.segment_name}")
+        segment_out = rgd.fill_missing_data(segment_out, self.z)
+        segment_out = rgd.fill_missing_data(
+            segment_out, f"{self.coords.attrs['parallel']}_{self.segment_name}"
         )
-
-        time = np.arange(
+        
+        times = xr.DataArray(np.arange(
             0,  #! Indexing everything from start of experiment = simple but maybe counterintutive?
             segment_out[self.time].shape[
                 0
             ],  ## Time is indexed from start date of window
             dtype=float,
-        )
-
-        segment_out = segment_out.assign_coords({"time": time})
+        ),  # Import pandas for this shouldn't be a big deal b/c it's already kinda required somewhere deep in some tree.
+            dims=["time"])
+        # This to change the time coordinate.
+        segment_out = rgd.add_or_update_time_dim(segment_out,times)
         segment_out.time.attrs = {
-            "calendar": "julian",
-            "units": f"{self.time_units} since {self.startdate}",
-        }
-        # Dictionary we built for encoding the netcdf at end
-        encoding_dict = {
-            "time": {
-                "dtype": "double",
-            },
-            f"nx_{self.segment_name}": {
-                "dtype": "int32",
-            },
-            f"ny_{self.segment_name}": {
-                "dtype": "int32",
-            },
-        }
-
-        ### Generate the dz variable; needs to be in layer thicknesses
-        dz = segment_out[self.z].diff(self.z)
-        dz.name = "dz"
-        dz = xr.concat([dz, dz[-1]], dim=self.z)
-
+                "calendar": "julian",
+                "units": f"{self.time_units} since {self.startdate}",
+            }
         # Here, keep in mind that 'var' keeps track of the mom6 variable names we want, and self.tracers[var]
         # will return the name of the variable from the original data
 
@@ -3195,130 +3190,53 @@ class segment:
             ## Rename each variable in dataset
             segment_out = segment_out.rename({allfields[var]: v})
 
-            ## Rename vertical coordinate for this variable
-            segment_out[f"{var}_{self.segment_name}"] = segment_out[
-                f"{var}_{self.segment_name}"
-            ].rename({self.z: f"nz_{self.segment_name}_{var}"})
-
-            ## Replace the old depth coordinates with incremental integers
-            segment_out[f"nz_{self.segment_name}_{var}"] = np.arange(
-                segment_out[f"nz_{self.segment_name}_{var}"].size
+            segment_out = rgd.vertical_coordinate_encoding(
+                segment_out, v, self.segment_name, self.z
             )
 
-            ## Re-add the secondary dimension (even though it represents one value..)
-            segment_out[v] = segment_out[v].expand_dims(
-                f"{self.coords.attrs['perpendicular']}_{self.segment_name}",
-                axis=self.coords.attrs["axis_to_expand"],
+            segment_out = rgd.add_secondary_dimension(
+                segment_out, v, coords, self.segment_name
             )
 
-            ## Add the layer thicknesses
-            segment_out[f"dz_{v}"] = (
-                [
-                    "time",
-                    f"nz_{v}",
-                    f"ny_{self.segment_name}",
-                    f"nx_{self.segment_name}",
-                ],
-                da.broadcast_to(
-                    dz.data[None, :, None, None],
-                    segment_out[v].shape,
-                    chunks=(
-                        1,
-                        None,
-                        None,
-                        None,
-                    ),  ## Chunk in each time, and every 5 vertical layers
-                ),
+            segment_out = rgd.generate_layer_thickness(
+                segment_out, v, self.segment_name, self.z
             )
 
-            encoding_dict[v] = {
-                "_FillValue": netCDF4.default_fillvals["f8"],
-                "zlib": True,
-                # "chunksizes": tuple(s),
-            }
-            encoding_dict[f"dz_{v}"] = {
-                "_FillValue": netCDF4.default_fillvals["f8"],
-                "zlib": True,
-                # "chunksizes": tuple(s),
-            }
-
-            ## appears to be another variable just with integers??
-            encoding_dict[f"nz_{self.segment_name}_{var}"] = {"dtype": "int32"}
 
         ## Treat eta separately since it has no vertical coordinate. Do the same things as for the surface variables above
         segment_out = segment_out.rename({self.eta: f"eta_{self.segment_name}"})
-        encoding_dict[f"eta_{self.segment_name}"] = {
-            "_FillValue": netCDF4.default_fillvals["f8"],
-        }
-        segment_out[f"eta_{self.segment_name}"] = segment_out[
-            f"eta_{self.segment_name}"
-        ].expand_dims(
-            f"{self.coords.attrs['perpendicular']}_{self.segment_name}",
-            axis=self.coords.attrs["axis_to_expand"] - 1,
+
+        segment_out = rgd.add_secondary_dimension(
+            segment_out, f"eta_{self.segment_name}", coords, self.segment_name
         )
 
         # Overwrite the actual lat/lon values in the dimensions, replace with incrementing integers
-        segment_out[f"{self.coords.attrs['parallel']}_{self.segment_name}"] = np.arange(
-            segment_out[f"{self.coords.attrs['parallel']}_{self.segment_name}"].size
+        segment_out[f"{self.coords.attrs['parallel']}_{self.segment_name}"] = (
+            np.arange(
+                segment_out[
+                    f"{self.coords.attrs['parallel']}_{self.segment_name}"
+                ].size
+            )
         )
         segment_out[f"{self.coords.attrs['perpendicular']}_{self.segment_name}"] = [0]
-        if self.orientation == "north":
-            self.hgrid_seg = self.hgrid.isel(nyp=[-1])
-            self.perpendicular = "ny"
-            self.parallel = "nx"
-
-        if self.orientation == "south":
-            self.hgrid_seg = self.hgrid.isel(nyp=[0])
-            self.perpendicular = "ny"
-            self.parallel = "nx"
-
-        if self.orientation == "east":
-            self.hgrid_seg = self.hgrid.isel(nxp=[-1])
-            self.perpendicular = "nx"
-            self.parallel = "ny"
-
-        if self.orientation == "west":
-            self.hgrid_seg = self.hgrid.isel(nxp=[0])
-            self.perpendicular = "nx"
-            self.parallel = "ny"
-
-        # Store actual lat/lon values here as variables rather than coordinates
-        segment_out[f"lon_{self.segment_name}"] = (
-            [f"ny_{self.segment_name}", f"nx_{self.segment_name}"],
-            self.coords.lon.expand_dims(
-                dim="blank", axis=self.coords.attrs["axis_to_expand"] - 2
-            ).data,
-        )
-        segment_out[f"lat_{self.segment_name}"] = (
-            [f"ny_{self.segment_name}", f"nx_{self.segment_name}"],
-            self.coords.lat.expand_dims(
-                dim="blank", axis=self.coords.attrs["axis_to_expand"] - 2
-            ).data,
+        encoding_dict = {
+            "time": {"dtype": "double"},
+            f"nx_{self.segment_name}": {
+                "dtype": "int32",
+            },
+            f"ny_{self.segment_name}": {
+                "dtype": "int32",
+            },
+        }
+        encoding_dict = rgd.generate_encoding(
+            segment_out, encoding_dict, default_fill_value=netCDF4.default_fillvals["f8"]
         )
 
-        # Add units to the lat / lon to keep the `categorize_axis_from_units` checker from throwing warnings
-        segment_out[f"lat_{self.segment_name}"].attrs = {
-            "units": "degrees_north",
-        }
-        segment_out[f"lon_{self.segment_name}"].attrs = {
-            "units": "degrees_east",
-        }
-        segment_out[f"ny_{self.segment_name}"].attrs = {
-            "units": "degrees_north",
-        }
-        segment_out[f"nx_{self.segment_name}"].attrs = {
-            "units": "degrees_east",
-        }
-        # If repeat-year forcing, add modulo coordinate
-        if self.repeat_year_forcing:
-            segment_out["time"] = segment_out["time"].assign_attrs({"modulo": " "})
-
-        with ProgressBar():
-            segment_out.load().to_netcdf(
-                self.outfolder / f"forcing_obc_{self.segment_name}.nc",
-                encoding=encoding_dict,
-                unlimited_dims="time",
-            )
+        segment_out.load().to_netcdf(
+            self.outfolder / f"forcing_obc_{self.segment_name}.nc",
+            encoding=encoding_dict,
+            unlimited_dims="time",
+        )
 
         return segment_out, encoding_dict
 
@@ -3342,9 +3260,9 @@ class segment:
 
         General Description:
         This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
-         - Converted code for RM6 segment class
-         - Implemented Horizontal Subsetting
-         - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, segment.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+        - Converted code for RM6 segment class
+        - Implemented Horizontal Subsetting
+        - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, segment.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
 
 
         Original Code was sourced from:
@@ -3356,70 +3274,67 @@ class segment:
         Web Address: https://github.com/jsimkins2/nwa25
         """
 
+        # Establish Coord
+        coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
+
         ########## Tidal Elevation: Horizontally interpolate elevation components ############
-        regrid = xe.Regridder(
+        regrid = rgd.create_regridder(
             tpxo_h[["lon", "lat", "hRe"]],
-            self.coords,
-            method="nearest_s2d",
-            locstream_out=True,
-            periodic=False,
-            filename=Path(
-                self.outfolder / "forcing" / f"regrid_{self.segment_name}_tidal_elev.nc"
+            coords,
+            Path(
+                self.outfolder
+                / "forcing"
+                / f"regrid_{self.segment_name}_tidal_elev.nc"
             ),
-            reuse_weights=False,
         )
+
         redest = regrid(tpxo_h[["lon", "lat", "hRe"]])
         imdest = regrid(tpxo_h[["lon", "lat", "hIm"]])
 
         # Fill missing data.
         # Need to do this first because complex would get converted to real
-        redest = redest.ffill(dim=self.coords.attrs["locations_name"], limit=None)[
-            "hRe"
-        ]
-        imdest = imdest.ffill(dim=self.coords.attrs["locations_name"], limit=None)[
-            "hIm"
-        ]
+        redest = rgd.fill_missing_data(
+            redest, f"{coords.attrs['parallel']}_{self.segment_name}"
+        )
+        redest = redest["hRe"]
+        imdest = rgd.fill_missing_data(
+            imdest, f"{coords.attrs['parallel']}_{self.segment_name}"
+        )
+        imdest = imdest["hIm"]
 
         # Convert complex
         cplex = redest + 1j * imdest
 
         # Convert to real amplitude and phase.
         ds_ap = xr.Dataset({f"zamp_{self.segment_name}": np.abs(cplex)})
+
         # np.angle doesn't return dataarray
         ds_ap[f"zphase_{self.segment_name}"] = (
-            ("constituent", self.coords.attrs["locations_name"]),
+            ("constituent", f"{coords.attrs['parallel']}_{self.segment_name}"),
             -1 * np.angle(cplex),
         )  # radians
 
         # Add time coordinate and transpose so that time is first,
         # so that it can be the unlimited dimension
-        ds_ap, _ = xr.broadcast(ds_ap, times)
-        ds_ap = ds_ap.transpose(
-            "time", "constituent", self.coords.attrs["locations_name"]
+        times = xr.DataArray(
+            pd.date_range(
+                self.startdate, periods=1
+            ),  # Import pandas for this shouldn't be a big deal b/c it's already kinda required somewhere deep in some tree.
+            dims=["time"],
         )
 
-        self.encode_tidal_files_and_output(ds_ap, "tz")
+        ds_ap = rgd.add_or_update_time_dim(ds_ap, times)
+        ds_ap = ds_ap.transpose(
+            "time", "constituent", f"{coords.attrs['parallel']}_{self.segment_name}"
+        )
+
+        self.encode_tidal_files_and_output(self, ds_ap, "tz")
 
         ########### Regrid Tidal Velocity ######################
-        regrid_u = xe.Regridder(
-            tpxo_u[["lon", "lat", "uRe"]],
-            self.coords,
-            method=method,
-            locstream_out=True,
-            periodic=periodic,
-            reuse_weights=False,
-        )
+        regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords, ".temp")
+        regrid_v = rgd.create_regridder(tpxo_v[["lon", "lat", "vRe"]], coords, ".temp2")
 
-        regrid_v = xe.Regridder(
-            tpxo_v[["lon", "lat", "vRe"]],
-            self.coords,
-            method=method,
-            locstream_out=True,
-            periodic=periodic,
-            reuse_weights=False,
-        )
-
-        # Interpolate each real and imaginary parts to segment.
+        # Interpolate each real and imaginary parts to self.
         uredest = regrid_u(tpxo_u[["lon", "lat", "uRe"]])["uRe"]
         uimdest = regrid_u(tpxo_u[["lon", "lat", "uIm"]])["uIm"]
         vredest = regrid_v(tpxo_v[["lon", "lat", "vRe"]])["vRe"]
@@ -3427,65 +3342,77 @@ class segment:
 
         # Fill missing data.
         # Need to do this first because complex would get converted to real
-        uredest = uredest.ffill(dim=self.coords.attrs["locations_name"], limit=None)
-        uimdest = uimdest.ffill(dim=self.coords.attrs["locations_name"], limit=None)
-        vredest = vredest.ffill(dim=self.coords.attrs["locations_name"], limit=None)
-        vimdest = vimdest.ffill(dim=self.coords.attrs["locations_name"], limit=None)
+        uredest = rgd.fill_missing_data(
+            uredest, f"{coords.attrs['parallel']}_{self.segment_name}"
+        )
+        uimdest = rgd.fill_missing_data(
+            uimdest, f"{coords.attrs['parallel']}_{self.segment_name}"
+        )
+        vredest = rgd.fill_missing_data(
+            vredest, f"{coords.attrs['parallel']}_{self.segment_name}"
+        )
+        vimdest = rgd.fill_missing_data(
+            vimdest, f"{coords.attrs['parallel']}_{self.segment_name}"
+        )
 
         # Convert to complex, remaining separate for u and v.
         ucplex = uredest + 1j * uimdest
         vcplex = vredest + 1j * vimdest
 
-        # Convert complex u and v to ellipse,
-        # rotate ellipse from earth-relative to model-relative,
-        # and convert ellipse back to amplitude and phase.
-        # There is probably a complicated trig identity for this? But
-        # this works too.
 
 
-        angle = self.coords["angle"]
+        angle = coords["angle"] # Fred's grid is in degrees
+
 
         # Convert complex u and v to ellipse,
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
-        INC -= angle.data[np.newaxis, :]
+        
+        INC -= np.radians(angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
+
+        # Convert to real amplitude and phase.
         ds_ap = xr.Dataset(
             {f"uamp_{self.segment_name}": ua, f"vamp_{self.segment_name}": va}
         )
         # up, vp aren't dataarraysf
         ds_ap[f"uphase_{self.segment_name}"] = (
-            ("constituent", self.coords.attrs["locations_name"]),
+            ("constituent", f"{coords.attrs['parallel']}_{self.segment_name}"),
             up,
         )  # radians
         ds_ap[f"vphase_{self.segment_name}"] = (
-            ("constituent", self.coords.attrs["locations_name"]),
+            ("constituent", f"{coords.attrs['parallel']}_{self.segment_name}"),
             vp,
         )  # radians
 
-        ds_ap, _ = xr.broadcast(ds_ap, times)
-
-        # Need to transpose so that time is first,
-        # so that it can be the unlimited dimension
+        times = xr.DataArray(
+            pd.date_range(
+                self.startdate, periods=1
+            ),  # Import pandas for this shouldn't be a big deal b/c it's already kinda required somewhere deep in some tree.
+            dims=["time"],
+        )
+        ds_ap = rgd.add_or_update_time_dim(ds_ap,times)
         ds_ap = ds_ap.transpose(
-            "time", "constituent", self.coords.attrs["locations_name"]
+            "time", "constituent", f"{coords.attrs['parallel']}_{self.segment_name}"
         )
 
         # Some things may have become missing during the transformation
-        ds_ap = ds_ap.ffill(dim=self.coords.attrs["locations_name"], limit=None)
+        ds_ap = rgd.fill_missing_data(
+            ds_ap, f"{coords.attrs['parallel']}_{self.segment_name}"
+        )
 
-        self.encode_tidal_files_and_output(ds_ap, "tu")
+        self.encode_tidal_files_and_output(segment, ds_ap, "tu")
 
         return
 
     def encode_tidal_files_and_output(self, ds, filename):
         """
         This function:
-         - Expands the dimensions (with the segment name)
-         - Renames some dimensions to be more specific to the segment
-         - Provides an output file encoding
-         - Exports the files.
+        - Expands the dimensions (with the segment name)
+        - Renames some dimensions to be more specific to the segment
+        - Provides an output file encoding
+        - Exports the files.
 
         Args:
             self.outfolder (str/path): The output folder to save the tidal files into
@@ -3496,9 +3423,9 @@ class segment:
 
         General Description:
         This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
-         - Converted code for RM6 segment class
-         - Implemented Horizontal Subsetting
-         - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, segment.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+        - Converted code for RM6 segment class
+        - Implemented Horizontal Subsetting
+        - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, self.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
 
 
         Original Code was sourced from:
@@ -3511,48 +3438,31 @@ class segment:
 
 
         """
+        coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
         ## Expand Tidal Dimensions ##
-        if "z" in ds.coords or "constituent" in ds.dims:
-            offset = 0
-        else:
-            offset = 1
-        if self.orientation in ["south", "north"]:
-            ds = ds.expand_dims(f"ny_{self.segment_name}", 2 - offset)
-        elif self.orientation in ["west", "east"]:
-            ds = ds.expand_dims(f"nx_{self.segment_name}", 3 - offset)
+
+        for var in ds:
+            
+            ds = rgd.add_secondary_dimension(ds, str(var), coords, self.segment_name)
 
         ## Rename Tidal Dimensions ##
         ds = ds.rename(
             {"lon": f"lon_{self.segment_name}", "lat": f"lat_{self.segment_name}"}
         )
-        if "z" in ds.coords:
-            ds = ds.rename({"z": f"nz_{self.segment_name}"})
-        if self.orientation in ["south", "north"]:
-            ds = ds.rename(
-                {self.coords.attrs["locations_name"]: f"nx_{self.segment_name}"}
-            )
-        elif self.orientation in ["west", "east"]:
-            ds = ds.rename(
-                {self.coords.attrs["locations_name"]: f"ny_{self.segment_name}"}
-            )
 
         ## Perform Encoding ##
-        for v in ds:
-            ds[v].encoding["_FillValue"] = 1.0e20
+
         fname = f"{filename}_{self.segment_name}.nc"
         # Set format and attributes for coordinates, including time if it does not already have calendar attribute
         # (may change this to detect whether time is a time type or a float).
         # Need to include the fillvalue or it will be back to nan
         encoding = {
-            "time": dict(_FillValue=1.0e20),
+            "time": dict(dtype="float64", calendar="gregorian", _FillValue=1.0e20),
             f"lon_{self.segment_name}": dict(dtype="float64", _FillValue=1.0e20),
             f"lat_{self.segment_name}": dict(dtype="float64", _FillValue=1.0e20),
         }
-        if "calendar" not in ds["time"].attrs and "modulo" not in ds["time"].attrs:
-            encoding.update(
-                {"time": dict(dtype="float64", calendar="gregorian", _FillValue=1.0e20)}
-            )
+        encoding = rgd.generate_encoding(ds, encoding, default_fill_value=netCDF4.default_fillvals["f8"])
 
         ## Export Files ##
         ds.to_netcdf(
@@ -3561,4 +3471,4 @@ class segment:
             encoding=encoding,
             unlimited_dims="time",
         )
-        return
+        return ds
