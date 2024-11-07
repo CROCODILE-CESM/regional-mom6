@@ -193,7 +193,6 @@ def add_or_update_time_dim(ds: xr.Dataset, times) -> xr.Dataset:
     # Make sure times is an xr.DataArray
     times = xr.DataArray(times)
 
-
     if "time" in ds.dims:
         regridding_logger.debug("Time already in dataset, overwriting with new values")
         ds["time"] = times
@@ -247,19 +246,18 @@ def add_secondary_dimension(
     -------
     xr.Dataset
         The dataset with the perpendicular dimension added
-    
-    
+
+
     """
-    
+
     # Check if we need to insert the dim earlier or later
     regridding_logger.info("Adding perpendicular dimension to {}".format(var))
 
-
-    regridding_logger.debug("Checking if nz or constituent is in dimensions, then we have to bump the perpendicular dimension up by one")
+    regridding_logger.debug(
+        "Checking if nz or constituent is in dimensions, then we have to bump the perpendicular dimension up by one"
+    )
     insert_behind_by = 0
-    if any(
-        coord.startswith("nz") or coord == "constituent" for coord in ds[var].dims
-    ):
+    if any(coord.startswith("nz") or coord == "constituent" for coord in ds[var].dims):
         regridding_logger.debug("Bump it by one")
         insert_behind_by = 0
     else:

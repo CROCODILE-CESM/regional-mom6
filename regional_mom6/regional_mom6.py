@@ -22,6 +22,7 @@ from collections import defaultdict
 import json
 import copy
 from . import regridding as rgd
+
 warnings.filterwarnings("ignore")
 
 __all__ = [
@@ -589,7 +590,7 @@ class experiment:
         hgrid_type="even_spacing",
         repeat_year_forcing=False,
         minimum_depth=4,
-        tidal_constituents=["M2"],
+        tidal_constituents=["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MM", "MF"],
         expt_name=None,
         boundaries=["south", "north", "west", "east"],
     ):
@@ -653,7 +654,7 @@ class experiment:
         vgrid_type="hyperbolic_tangent",
         repeat_year_forcing=False,
         minimum_depth=4,
-        tidal_constituents=["M2"],
+        tidal_constituents=["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MM", "MF"],
         create_empty=False,
         expt_name=None,
         boundaries=["south", "north", "west", "east"],
@@ -3013,8 +3014,8 @@ class segment:
 
     def regrid_velocity_tracers(self):
         """
-    Cut out and interpolate the velocities and tracers
-    """
+        Cut out and interpolate the velocities and tracers
+        """
 
         rawseg = xr.open_dataset(self.infile, decode_times=False, engine="netcdf4")
         coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
@@ -3032,22 +3033,17 @@ class segment:
 
             regridded = regridder(
                 rawseg[
-                    [self.u, self.v, self.eta]
-                    + [self.tracers[i] for i in self.tracers]
+                    [self.u, self.v, self.eta] + [self.tracers[i] for i in self.tracers]
                 ]
             )
-            rotated_u, rotated_v = self.rotate(
-                regridded[self.u], regridded[self.v]
-            )
+            rotated_u, rotated_v = self.rotate(regridded[self.u], regridded[self.v])
             rotated_ds = xr.Dataset(
                 {
                     self.u: rotated_u,
                     self.v: rotated_v,
                 }
             )
-            segment_out = xr.merge(
-                [rotated_ds, regridded.drop_vars([self.u, self.v])]
-            )
+            segment_out = xr.merge([rotated_ds, regridded.drop_vars([self.u, self.v])])
 
         if self.arakawa_grid == "B":
             ## All tracers on one grid, all velocities on another
@@ -3058,19 +3054,14 @@ class segment:
                 / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
             )
             regridder_tracer = rgd.create_regridder(
-                rawseg[self.tracers["salt"]].rename(
-                    {self.xh: "lon", self.yh: "lat"}
-                ),
+                rawseg[self.tracers["salt"]].rename({self.xh: "lon", self.yh: "lat"}),
                 coords,
                 self.outfolder
                 / f"weights/bilinear_tracer_weights_{self.orientation}.nc",
             )
 
-
             velocities_out = regridder_velocity(
-                rawseg[[self.u, self.v]].rename(
-                    {self.xq: "lon", self.yq: "lat"}
-                )
+                rawseg[[self.u, self.v]].rename({self.xq: "lon", self.yq: "lat"})
             )
 
             velocities_out["u"], velocities_out["v"] = self.rotate(
@@ -3097,7 +3088,6 @@ class segment:
                 / f"weights/bilinear_uvelocity_weights_{self.orientation}.nc",
             )
 
-
             regridder_vvelocity = rgd.create_regridder(
                 rawseg[self.v].rename({self.xh: "lon", self.yq: "lat"}),
                 coords,
@@ -3106,9 +3096,7 @@ class segment:
             )
 
             regridder_tracer = rgd.create_regridder(
-                rawseg[self.tracers["salt"]].rename(
-                    {self.xh: "lon", self.yh: "lat"}
-                ),
+                rawseg[self.tracers["salt"]].rename({self.xh: "lon", self.yh: "lat"}),
                 coords,
                 self.outfolder
                 / f"weights/bilinear_tracer_weights_{self.orientation}.nc",
@@ -3117,9 +3105,7 @@ class segment:
             regridded_u = regridder_uvelocity(rawseg[[self.u]])
             regridded_v = regridder_vvelocity(rawseg[[self.v]])
 
-            rotated_u, rotated_v = self.rotate(
-                regridded_u[self.u], regridded_v[self.v]
-            )
+            rotated_u, rotated_v = self.rotate(regridded_u[self.u], regridded_v[self.v])
             rotated_ds = xr.Dataset(
                 {
                     self.u: rotated_u,
@@ -3130,9 +3116,7 @@ class segment:
                 [
                     rotated_ds,
                     regridder_tracer(
-                        rawseg[
-                            [self.eta] + [self.tracers[i] for i in self.tracers]
-                        ]
+                        rawseg[[self.eta] + [self.tracers[i] for i in self.tracers]]
                     ),
                 ]
             )
@@ -3144,9 +3128,7 @@ class segment:
         del segment_out["lat"]
         ## Convert temperatures to celsius # use pint
         if (
-            np.nanmin(
-                segment_out[self.tracers["temp"]].isel({self.time: 0, self.z: 0})
-            )
+            np.nanmin(segment_out[self.tracers["temp"]].isel({self.time: 0, self.z: 0}))
             > 100
         ):
             segment_out[self.tracers["temp"]] -= 273.15
@@ -3157,21 +3139,23 @@ class segment:
         segment_out = rgd.fill_missing_data(
             segment_out, f"{self.coords.attrs['parallel']}_{self.segment_name}"
         )
-        
-        times = xr.DataArray(np.arange(
-            0,  #! Indexing everything from start of experiment = simple but maybe counterintutive?
-            segment_out[self.time].shape[
-                0
-            ],  ## Time is indexed from start date of window
-            dtype=float,
-        ),  # Import pandas for this shouldn't be a big deal b/c it's already kinda required somewhere deep in some tree.
-            dims=["time"])
+
+        times = xr.DataArray(
+            np.arange(
+                0,  #! Indexing everything from start of experiment = simple but maybe counterintutive?
+                segment_out[self.time].shape[
+                    0
+                ],  ## Time is indexed from start date of window
+                dtype=float,
+            ),  # Import pandas for this shouldn't be a big deal b/c it's already kinda required somewhere deep in some tree.
+            dims=["time"],
+        )
         # This to change the time coordinate.
-        segment_out = rgd.add_or_update_time_dim(segment_out,times)
+        segment_out = rgd.add_or_update_time_dim(segment_out, times)
         segment_out.time.attrs = {
-                "calendar": "julian",
-                "units": f"{self.time_units} since {self.startdate}",
-            }
+            "calendar": "julian",
+            "units": f"{self.time_units} since {self.startdate}",
+        }
         # Here, keep in mind that 'var' keeps track of the mom6 variable names we want, and self.tracers[var]
         # will return the name of the variable from the original data
 
@@ -3202,7 +3186,6 @@ class segment:
                 segment_out, v, self.segment_name, self.z
             )
 
-
         ## Treat eta separately since it has no vertical coordinate. Do the same things as for the surface variables above
         segment_out = segment_out.rename({self.eta: f"eta_{self.segment_name}"})
 
@@ -3211,12 +3194,8 @@ class segment:
         )
 
         # Overwrite the actual lat/lon values in the dimensions, replace with incrementing integers
-        segment_out[f"{self.coords.attrs['parallel']}_{self.segment_name}"] = (
-            np.arange(
-                segment_out[
-                    f"{self.coords.attrs['parallel']}_{self.segment_name}"
-                ].size
-            )
+        segment_out[f"{self.coords.attrs['parallel']}_{self.segment_name}"] = np.arange(
+            segment_out[f"{self.coords.attrs['parallel']}_{self.segment_name}"].size
         )
         segment_out[f"{self.coords.attrs['perpendicular']}_{self.segment_name}"] = [0]
         encoding_dict = {
@@ -3229,7 +3208,9 @@ class segment:
             },
         }
         encoding_dict = rgd.generate_encoding(
-            segment_out, encoding_dict, default_fill_value=netCDF4.default_fillvals["f8"]
+            segment_out,
+            encoding_dict,
+            default_fill_value=netCDF4.default_fillvals["f8"],
         )
 
         segment_out.load().to_netcdf(
@@ -3282,9 +3263,7 @@ class segment:
             tpxo_h[["lon", "lat", "hRe"]],
             coords,
             Path(
-                self.outfolder
-                / "forcing"
-                / f"regrid_{self.segment_name}_tidal_elev.nc"
+                self.outfolder / "forcing" / f"regrid_{self.segment_name}_tidal_elev.nc"
             ),
         )
 
@@ -3328,7 +3307,7 @@ class segment:
             "time", "constituent", f"{coords.attrs['parallel']}_{self.segment_name}"
         )
 
-        self.encode_tidal_files_and_output( ds_ap, "tz")
+        self.encode_tidal_files_and_output(ds_ap, "tz")
 
         ########### Regrid Tidal Velocity ######################
         regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords, ".temp")
@@ -3359,16 +3338,13 @@ class segment:
         ucplex = uredest + 1j * uimdest
         vcplex = vredest + 1j * vimdest
 
-
-
-        angle = coords["angle"] # Fred's grid is in degrees
-
+        angle = coords["angle"]  # Fred's grid is in degrees
 
         # Convert complex u and v to ellipse,
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
-        
+
         INC -= np.radians(angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
 
@@ -3392,7 +3368,7 @@ class segment:
             ),  # Import pandas for this shouldn't be a big deal b/c it's already kinda required somewhere deep in some tree.
             dims=["time"],
         )
-        ds_ap = rgd.add_or_update_time_dim(ds_ap,times)
+        ds_ap = rgd.add_or_update_time_dim(ds_ap, times)
         ds_ap = ds_ap.transpose(
             "time", "constituent", f"{coords.attrs['parallel']}_{self.segment_name}"
         )
@@ -3402,7 +3378,7 @@ class segment:
             ds_ap, f"{coords.attrs['parallel']}_{self.segment_name}"
         )
 
-        self.encode_tidal_files_and_output( ds_ap, "tu")
+        self.encode_tidal_files_and_output(ds_ap, "tu")
 
         return
 
@@ -3443,7 +3419,7 @@ class segment:
         ## Expand Tidal Dimensions ##
 
         for var in ds:
-            
+
             ds = rgd.add_secondary_dimension(ds, str(var), coords, self.segment_name)
 
         ## Rename Tidal Dimensions ##
@@ -3462,7 +3438,9 @@ class segment:
             f"lon_{self.segment_name}": dict(dtype="float64", _FillValue=1.0e20),
             f"lat_{self.segment_name}": dict(dtype="float64", _FillValue=1.0e20),
         }
-        encoding = rgd.generate_encoding(ds, encoding, default_fill_value=netCDF4.default_fillvals["f8"])
+        encoding = rgd.generate_encoding(
+            ds, encoding, default_fill_value=netCDF4.default_fillvals["f8"]
+        )
 
         # Can't have nas in the land segments and such cuz it crashes
         ds = ds.fillna(0)
