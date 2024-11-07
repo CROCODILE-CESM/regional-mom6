@@ -61,7 +61,18 @@ def test_write_config():
     assert config_dict["expt_name"] == "test"
     assert config_dict["hgrid_type"] == "even_spacing"
     assert config_dict["repeat_year_forcing"] == False
-    assert config_dict["tidal_constituents"] == ["M2"]
+    assert config_dict["tidal_constituents"] == [
+        "M2",
+        "S2",
+        "N2",
+        "K2",
+        "K1",
+        "O1",
+        "P1",
+        "Q1",
+        "MM",
+        "MF",
+    ]
     assert config_dict["expt_name"] == "test"
     assert config_dict["boundaries"] == ["south", "north"]
     shutil.rmtree(run_dir)

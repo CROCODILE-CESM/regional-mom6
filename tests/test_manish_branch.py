@@ -252,7 +252,10 @@ class TestAll:
         # Create Forcing Folder
         os.makedirs(self.dump_files_dir / "forcing", exist_ok=True)
 
-        self.expt.setup_boundary_tides(self.dump_files_dir, "fake_tidal_data.nc")
+        self.expt.setup_boundary_tides(
+            self.dump_files_dir / "h_fake_tidal_data.nc",
+            self.dump_files_dir / "u_fake_tidal_data.nc",
+        )
 
     def test_change_MOM_parameter(self):
         """
