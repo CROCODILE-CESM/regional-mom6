@@ -21,7 +21,7 @@ import glob
 from collections import defaultdict
 import json
 import copy
-import regridding as rgd
+from . import regridding as rgd
 warnings.filterwarnings("ignore")
 
 __all__ = [
@@ -1648,8 +1648,8 @@ class experiment:
 
     def setup_boundary_tides(
         self,
-        path_to_td,
-        tidal_filename,
+        tpxo_elevation_filepath,
+        tpxo_velocity_filepath,
         tidal_constituents="read_from_expt_init",
         boundary_type="rectangle",
     ):
@@ -1687,7 +1687,7 @@ class experiment:
         if tidal_constituents != "read_from_expt_init":
             self.tidal_constituents = tidal_constituents
         tpxo_h = (
-            xr.open_dataset(Path(path_to_td / f"h_{tidal_filename}"))
+            xr.open_dataset(Path(tpxo_elevation_filepath))
             .rename({"lon_z": "lon", "lat_z": "lat", "nc": "constituent"})
             .isel(
                 constituent=convert_to_tpxo_tidal_constituents(self.tidal_constituents)
@@ -1698,7 +1698,7 @@ class experiment:
         tpxo_h["hRe"] = np.real(h)
         tpxo_h["hIm"] = np.imag(h)
         tpxo_u = (
-            xr.open_dataset(Path(path_to_td / f"u_{tidal_filename}"))
+            xr.open_dataset(Path(tpxo_velocity_filepath))
             .rename({"lon_u": "lon", "lat_u": "lat", "nc": "constituent"})
             .isel(
                 constituent=convert_to_tpxo_tidal_constituents(self.tidal_constituents)
@@ -1709,7 +1709,7 @@ class experiment:
         tpxo_u["uRe"] = np.real(u)
         tpxo_u["uIm"] = np.imag(u)
         tpxo_v = (
-            xr.open_dataset(Path(path_to_td / f"u_{tidal_filename}"))
+            xr.open_dataset(Path(tpxo_velocity_filepath))
             .rename({"lon_v": "lon", "lat_v": "lat", "nc": "constituent"})
             .isel(
                 constituent=convert_to_tpxo_tidal_constituents(self.tidal_constituents)
@@ -3328,7 +3328,7 @@ class segment:
             "time", "constituent", f"{coords.attrs['parallel']}_{self.segment_name}"
         )
 
-        self.encode_tidal_files_and_output(self, ds_ap, "tz")
+        self.encode_tidal_files_and_output( ds_ap, "tz")
 
         ########### Regrid Tidal Velocity ######################
         regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords, ".temp")
@@ -3402,7 +3402,7 @@ class segment:
             ds_ap, f"{coords.attrs['parallel']}_{self.segment_name}"
         )
 
-        self.encode_tidal_files_and_output(segment, ds_ap, "tu")
+        self.encode_tidal_files_and_output( ds_ap, "tu")
 
         return
 
@@ -3464,6 +3464,8 @@ class segment:
         }
         encoding = rgd.generate_encoding(ds, encoding, default_fill_value=netCDF4.default_fillvals["f8"])
 
+        # Can't have nas in the land segments and such cuz it crashes
+        ds = ds.fillna(0)
         ## Export Files ##
         ds.to_netcdf(
             Path(self.outfolder / "forcing" / fname),
