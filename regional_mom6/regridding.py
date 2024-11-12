@@ -379,3 +379,82 @@ def generate_encoding(
             }
 
     return encoding_dict
+
+
+
+def modulo_around_point(x, xc, Lx):
+    """
+    This function calculates the modulo around a point. Return the modulo value of x in an interval [xc-(Lx/2) xc+(Lx/2)]. If Lx<=0, then it returns x without applying modulo arithmetic.
+    Parameters
+    ----------
+    x: float
+        Value to which to apply modulo arithmetic
+    xc: float
+        Center of modulo range
+    Lx: float
+        Modulo range width
+    Returns
+    -------
+    float
+        x shifted by an integer multiple of Lx to be close to xc, 
+    """
+    if Lx <= 0:
+        return x
+    else:
+        return ((x - (xc - 0.5*Lx)) % Lx )- Lx/2 + xc
+    
+
+def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.Dataset:
+    """
+    Calculate the angle_dx in degrees from the true x (east?) direction counterclockwise) and save as angle_dx_mom6
+    Parameters
+    ----------
+    hgrid: xr.Dataset
+        The hgrid dataset
+    Returns
+    -------
+    xr.Dataset
+        The dataset with the mom6_angle_dx variable added
+    """
+    regridding_logger.info("Initializing grid rotation angle")
+    # Direct Translation
+    pi_720deg = np.arctan(1)/180 # One quarter the conversion factor from degrees to radians
+    
+    ## Check length of longitude
+    len_lon = 360.0
+    G_len_lon = hgrid.x.max() - hgrid.x.min()
+    if G_len_lon != 360:
+        regridding_logger.info("This is a regional case")
+        len_lon = G_len_lon
+
+    angles_arr = np.zeros((len(hgrid.nyp), len(hgrid.nxp)))
+
+    # Compute lonB for all points
+    lonB = np.zeros((2, 2, len(hgrid.nyp)-2, len(hgrid.nxp)-2))
+
+    # Vectorized Compute lonB - Fortran is 1-indexed, so we need to subtract 1 from the indices in lonB[m-1,n-1]
+    for n in np.arange(1,3):
+        for m in np.arange(1,3):
+            lonB[m-1, n-1] = modulo_around_point(hgrid.x[np.arange((m-2+1),(m-2+len(hgrid.nyp)-1)), np.arange((n-2+1),(n-2+len(hgrid.nxp)-1))], hgrid.x[1:-1,1:-1], len_lon)
+
+    # Vectorized Compute lon_scale
+    lon_scale = np.cos(pi_720deg* ((hgrid.y[0:-2, 0:-2] + hgrid.y[1:-1, 1:-1]) + (hgrid.y[1:-1, 0:-2] + hgrid.y[0:-2, 1:-1])))
+
+    # Vectorized Compute angle
+    angle = np.arctan2(
+        lon_scale * ((lonB[0, 1] - lonB[1, 0]) + (lonB[1, 1] - lonB[0, 0])),
+        (hgrid.y[0:-2, 1:-1] - hgrid.y[1:-1, 0:-2]) + (hgrid.y[1:-1, 1:-1] - hgrid.y[0:-2, 0:-2])
+    )
+
+    # Assign angle to angles_arr
+    angles_arr[1:-1,1:-1] = 90 - np.rad2deg(angle)
+
+
+    # Assign angles_arr to hgrid
+    hgrid["angle_dx_mom6"] = (("nyp", "nxp"), angles_arr)
+    hgrid["angle_dx_mom6"].attrs["_FillValue"] = np.nan
+    hgrid["angle_dx_mom6"].attrs["units"] = "deg"
+    hgrid["angle_dx_mom6"].attrs["description"] = "MOM6 calculates angles internally, this field replicates that for rotating boundary conditions. Use this over other angle fields for MOM6 applications"
+
+    return hgrid
+    
