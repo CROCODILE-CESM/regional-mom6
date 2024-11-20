@@ -154,7 +154,7 @@ def dummy_bathymetry_data():
 
 
 class TestAll:
-    
+
     @pytest.fixture(scope="module")
     def full_legit_expt_setup(self, dummy_bathymetry_data, tmp_path):
 
@@ -167,7 +167,8 @@ class TestAll:
 
         ## Place where all your input files go
         input_dir = Path(
-            os.path.join(tmp_path,
+            os.path.join(
+                tmp_path,
                 expt_name,
                 "inputs",
             )
@@ -175,12 +176,13 @@ class TestAll:
 
         ## Directory where you'll run the experiment from
         run_dir = Path(
-            os.path.join(tmp_path,
+            os.path.join(
+                tmp_path,
                 expt_name,
                 "run_files",
             )
         )
-        data_path = Path(tmp_path/"data")
+        data_path = Path(tmp_path / "data")
         for path in (run_dir, input_dir, data_path):
             os.makedirs(str(path), exist_ok=True)
         bathy_path = data_path / "bathymetry.nc"
@@ -212,7 +214,8 @@ class TestAll:
 
         ## Place where all your input files go
         input_dir = Path(
-            os.path.join(tmp_path,
+            os.path.join(
+                tmp_path,
                 expt_name,
                 "inputs",
             )
@@ -220,12 +223,13 @@ class TestAll:
 
         ## Directory where you'll run the experiment from
         run_dir = Path(
-            os.path.join(tmp_path,
+            os.path.join(
+                tmp_path,
                 expt_name,
                 "run_files",
             )
         )
-        data_path = Path(tmp_path/"data")
+        data_path = Path(tmp_path / "data")
         for path in (run_dir, input_dir, data_path):
             os.makedirs(str(path), exist_ok=True)
         bathy_path = data_path / "bathymetry.nc"
@@ -246,7 +250,6 @@ class TestAll:
             toolpath_dir="",
         )
         assert str(expt)
-
 
     def test_tides(self, dummy_tidal_data, tmp_path):
         """
