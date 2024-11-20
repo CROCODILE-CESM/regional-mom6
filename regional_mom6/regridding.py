@@ -36,15 +36,18 @@ from .utils import setup_logger
 regridding_logger = setup_logger(__name__)
 
 
-def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset:
+def coords(
+    hgrid: xr.Dataset, orientation: str, segment_name: str, coords_at_t_points=False
+) -> xr.Dataset:
     """
     This function:
-    Allows us to call the self.coords for use in the xesmf.Regridder in the regrid_tides function. self.coords gives us the subset of the hgrid based on the orientation.
+    Allows us to call the coords for use in the xesmf.Regridder in the regrid_tides function. self.coords gives us the subset of the hgrid based on the orientation.
 
     Args:
         hgrid (xr.Dataset): The hgrid dataset
         orientation (str): The orientation of the boundary
         segment_name (str): The name of the segment
+        coords_at_t_points (bool, optional): Whether to return the boundary t-points instead of the q/u/v of a general boundary for rotation. Defaults to False.
     Returns:
         xr.Dataset: The correct coordinate space for the orientation
 
@@ -57,13 +60,43 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     Web Address: https://github.com/jsimkins2/nwa25
 
     """
+
+    dataset_to_get_coords = None
+
+    if coords_at_t_points:
+        regridding_logger.info("Creating (fake) coordinates of the boundary t-points")
+
+        # Calc T Point Info
+        k = 2
+        kp2 = k // 2
+        offset_one_by_two_y = slice(kp2, len(hgrid.x.nyp), k)
+        offset_one_by_two_x = slice(kp2, len(hgrid.x.nxp), k)
+        t_points = (offset_one_by_two_y, offset_one_by_two_x)
+
+        # Subset the hgrid to the t-points
+        tlon = hgrid.x[t_points]
+        tlat = hgrid.y[t_points]
+        tangle_dx = hgrid["angle_dx"][t_points]
+
+        # Assign to dataset
+        dataset_to_get_coords = xr.Dataset()
+        dataset_to_get_coords["x"] = tlon
+        dataset_to_get_coords["y"] = tlat
+        dataset_to_get_coords["angle_dx"] = tangle_dx
+    else:
+        regridding_logger.info(
+            "Creating (actual) coordinates of the boundary q/u/v points"
+        )
+        # Don't have to do anything because this is the actual boundary. t-points are one-index deep and require managing.
+        dataset_to_get_coords = hgrid
+
     # Rename nxp and nyp to locations
     if orientation == "south":
         rcoord = xr.Dataset(
             {
-                "lon": hgrid["x"].isel(nyp=0),
-                "lat": hgrid["y"].isel(nyp=0),
-                "angle": hgrid["angle_dx"].isel(nyp=0),
+                "lon": dataset_to_get_coords["x"].isel(nyp=0),
+                "lat": dataset_to_get_coords["y"].isel(nyp=0),
+                "angle": dataset_to_get_coords["angle_dx"].isel(nyp=0),
             }
         )
         rcoord = rcoord.rename_dims({"nxp": f"nx_{segment_name}"})
@@ -75,9 +108,9 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     elif orientation == "north":
         rcoord = xr.Dataset(
             {
-                "lon": hgrid["x"].isel(nyp=-1),
-                "lat": hgrid["y"].isel(nyp=-1),
-                "angle": hgrid["angle_dx"].isel(nyp=-1),
+                "lon": dataset_to_get_coords["x"].isel(nyp=-1),
+                "lat": dataset_to_get_coords["y"].isel(nyp=-1),
+                "angle": dataset_to_get_coords["angle_dx"].isel(nyp=-1),
             }
         )
         rcoord = rcoord.rename_dims({"nxp": f"nx_{segment_name}"})
@@ -87,9 +120,9 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     elif orientation == "west":
         rcoord = xr.Dataset(
             {
-                "lon": hgrid["x"].isel(nxp=0),
-                "lat": hgrid["y"].isel(nxp=0),
-                "angle": hgrid["angle_dx"].isel(nxp=0),
+                "lon": dataset_to_get_coords["x"].isel(nxp=0),
+                "lat": dataset_to_get_coords["y"].isel(nxp=0),
+                "angle": dataset_to_get_coords["angle_dx"].isel(nxp=0),
             }
         )
         rcoord = rcoord.rename_dims({"nyp": f"ny_{segment_name}"})
@@ -99,9 +132,9 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     elif orientation == "east":
         rcoord = xr.Dataset(
             {
-                "lon": hgrid["x"].isel(nxp=-1),
-                "lat": hgrid["y"].isel(nxp=-1),
-                "angle": hgrid["angle_dx"].isel(nxp=-1),
+                "lon": dataset_to_get_coords["x"].isel(nxp=-1),
+                "lat": dataset_to_get_coords["y"].isel(nxp=-1),
+                "angle": dataset_to_get_coords["angle_dx"].isel(nxp=-1),
             }
         )
         rcoord = rcoord.rename_dims({"nyp": f"ny_{segment_name}"})
