@@ -6,7 +6,7 @@ import json
 import shutil
 
 
-def test_write_config():
+def test_write_config(tmp_path):
     expt_name = "testing"
 
     latitude_extent = [16.0, 27]
@@ -16,7 +16,7 @@ def test_write_config():
 
     ## Place where all your input files go
     input_dir = Path(
-        os.path.join(
+        os.path.join(tmp_path,
             expt_name,
             "inputs",
         )
@@ -24,12 +24,12 @@ def test_write_config():
 
     ## Directory where you'll run the experiment from
     run_dir = Path(
-        os.path.join(
+        os.path.join(tmp_path,
             expt_name,
             "run_files",
         )
     )
-    data_path = Path("data")
+    data_path = Path(tmp_path/"data")
     for path in (run_dir, input_dir, data_path):
         os.makedirs(str(path), exist_ok=True)
 
@@ -49,7 +49,7 @@ def test_write_config():
         expt_name="test",
         boundaries=["south", "north"],
     )
-    config_dict = expt.write_config_file()
+    config_dict = expt.write_config_file(tmp_path/"testing_config.json")
     assert config_dict["longitude_extent"] == tuple(longitude_extent)
     assert config_dict["latitude_extent"] == tuple(latitude_extent)
     assert config_dict["date_range"] == date_range
@@ -80,7 +80,7 @@ def test_write_config():
     shutil.rmtree(data_path)
 
 
-def test_load_config():
+def test_load_config(tmp_path):
 
     expt_name = "testing"
 
@@ -91,7 +91,7 @@ def test_load_config():
 
     ## Place where all your input files go
     input_dir = Path(
-        os.path.join(
+        os.path.join(tmp_path,
             expt_name,
             "inputs",
         )
@@ -99,12 +99,12 @@ def test_load_config():
 
     ## Directory where you'll run the experiment from
     run_dir = Path(
-        os.path.join(
+        os.path.join(tmp_path,
             expt_name,
             "run_files",
         )
     )
-    data_path = Path("data")
+    data_path = Path(tmp_path/"data")
     for path in (run_dir, input_dir, data_path):
         os.makedirs(str(path), exist_ok=True)
 
@@ -122,9 +122,9 @@ def test_load_config():
         mom_input_dir=input_dir,
         toolpath_dir="",
     )
-    path = "testing_config.json"
+    path = os.path.join(tmp_path,"testing_config.json")
     config_expt = expt.write_config_file(path)
-    new_expt = rmom6.create_experiment_from_config(os.path.join(path))
+    new_expt = rmom6.create_experiment_from_config(os.path.join(path), mom_input_folder=tmp_path, mom_run_folder=tmp_path)
     assert str(new_expt) == str(expt)
     print(new_expt.vgrid)
     print(expt.vgrid)
@@ -136,8 +136,4 @@ def test_load_config():
     assert os.path.exists(new_expt.mom_input_dir / "hgrid.nc") & os.path.exists(
         new_expt.mom_input_dir / "vcoord.nc"
     )
-    shutil.rmtree(run_dir)
-    shutil.rmtree(input_dir)
-    shutil.rmtree(data_path)
-    shutil.rmtree(new_expt.mom_run_dir)
-    shutil.rmtree(new_expt.mom_input_dir)
+
