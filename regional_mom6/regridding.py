@@ -32,6 +32,23 @@ import numpy as np
 import netCDF4
 from .utils import setup_logger
 
+# An Enum is like a dropdown selection for a menu, it essentially limits the type of input parameters. It comes with additional complexity, which of course is always a challenge.
+from enum import Enum
+
+
+class RotationMethod(Enum):
+    """
+    This Enum defines the rotational method to be used in boundary conditions. The main regional mom6 class passes in this enum to regrid_tides and regrid_velocity_tracers to determine the method used.
+
+    KEITH_DOUBLE_REGRIDDING: This method is used to regrid the boundary conditions to the t-points, b/c we can calculate t-point angle the same way as MOM6, rotate the conditions, and regrid again to the q-u-v, or actual, boundary
+    FRED_AVERAGE: This method is used with the basis that we can find the angles at the q-u-v points by pretending we have another row/column of the hgrid with the same distances as the t-point to u/v points in the actual grid then use the four poitns to calculate the angle the exact same way MOM6 does.
+    GIVEN_ANGLE: This is the original default RM6 method which expects a pre-given angle called angle_dx
+    """
+
+    KEITH_DOUBLE_REGRIDDING = 1
+    FRED_AVERAGE = 2
+    GIVEN_ANGLE = 3
+
 
 regridding_logger = setup_logger(__name__)
 
@@ -64,29 +81,23 @@ def coords(
     dataset_to_get_coords = None
 
     if coords_at_t_points:
-        regridding_logger.info("Creating (fake) coordinates of the boundary t-points")
+        regridding_logger.info("Creating coordinates of the boundary t-points")
 
         # Calc T Point Info
-        k = 2
-        kp2 = k // 2
-        offset_one_by_two_y = slice(kp2, len(hgrid.x.nyp), k)
-        offset_one_by_two_x = slice(kp2, len(hgrid.x.nxp), k)
-        t_points = (offset_one_by_two_y, offset_one_by_two_x)
+        ds = get_hgrid_arakawa_c_points(hgrid, "t")
 
-        # Subset the hgrid to the t-points
-        tlon = hgrid.x[t_points]
-        tlat = hgrid.y[t_points]
-        tangle_dx = hgrid["angle_dx"][t_points]
-
+        tangle_dx = hgrid["angle_dx"][(ds.t_points_y, ds.t_points_x)]
         # Assign to dataset
-        dataset_to_get_coords = xr.Dataset()
-        dataset_to_get_coords["x"] = tlon
-        dataset_to_get_coords["y"] = tlat
-        dataset_to_get_coords["angle_dx"] = tangle_dx
-    else:
-        regridding_logger.info(
-            "Creating (actual) coordinates of the boundary q/u/v points"
+        dataset_to_get_coords = xr.Dataset(
+            {
+                "x": ds.tlon,
+                "y": ds.tlat,
+                "angle_dx": (("nyp", "nxp"), tangle_dx.values),
+            },
+            coords={"nyp": ds.nyp, "nxp": ds.nxp},
         )
+    else:
+        regridding_logger.info("Creating coordinates of the boundary q/u/v points")
         # Don't have to do anything because this is the actual boundary. t-points are one-index deep and require managing.
         dataset_to_get_coords = hgrid
 
@@ -445,8 +456,8 @@ def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.Dataset:
         The hgrid dataset
     Returns
     -------
-    xr.Dataset
-        The dataset with the mom6_angle_dx variable added
+    xr.DataArray
+        The t-point angles
     """
     regridding_logger.info("Initializing grid rotation angle")
     # Direct Translation
@@ -461,48 +472,98 @@ def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.Dataset:
         regridding_logger.info("This is a regional case")
         len_lon = G_len_lon
 
-    angles_arr = np.zeros((len(hgrid.nyp), len(hgrid.nxp)))
+    angles_arr_v2 = np.zeros((len(tlon.nyp), len(tlon.nxp)))
 
     # Compute lonB for all points
-    lonB = np.zeros((2, 2, len(hgrid.nyp) - 2, len(hgrid.nxp) - 2))
+    lonB = np.zeros((2, 2, len(tlon.nyp), len(tlon.nxp)))
 
-    # Vectorized Compute lonB - Fortran is 1-indexed, so we need to subtract 1 from the indices in lonB[m-1,n-1]
-    for n in np.arange(1, 3):
-        for m in np.arange(1, 3):
-            lonB[m - 1, n - 1] = modulo_around_point(
-                hgrid.x[
-                    np.arange((m - 2 + 1), (m - 2 + len(hgrid.nyp) - 1)),
-                    np.arange((n - 2 + 1), (n - 2 + len(hgrid.nxp) - 1)),
+    # Vectorized computation of lonB
+    for n in np.arange(0, 2):
+        for m in np.arange(0, 2):
+            lonB[m, n] = modulo_around_point(
+                qlon[
+                    np.arange(m, (m - 1 + len(qlon.nyp))),
+                    np.arange(n, (n - 1 + len(qlon.nxp))),
                 ],
-                hgrid.x[1:-1, 1:-1],
+                tlon,
                 len_lon,
             )
 
-    # Vectorized Compute lon_scale
+    # Compute lon_scale
     lon_scale = np.cos(
         pi_720deg
-        * (
-            (hgrid.y[0:-2, 0:-2] + hgrid.y[1:-1, 1:-1])
-            + (hgrid.y[1:-1, 0:-2] + hgrid.y[0:-2, 1:-1])
-        )
+        * ((qlat[0:-1, 0:-1] + qlat[1:, 1:]) + (qlat[1:, 0:-1] + qlat[0:-1, 1:]))
     )
 
-    # Vectorized Compute angle
+    # Compute angle
     angle = np.arctan2(
         lon_scale * ((lonB[0, 1] - lonB[1, 0]) + (lonB[1, 1] - lonB[0, 0])),
-        (hgrid.y[0:-2, 1:-1] - hgrid.y[1:-1, 0:-2])
-        + (hgrid.y[1:-1, 1:-1] - hgrid.y[0:-2, 0:-2]),
+        (qlat[:-1, :-1] - qlat[1:, 1:]) + (qlat[1:, 0:-1] - qlat[0:-1, 1:]),
     )
-
     # Assign angle to angles_arr
-    angles_arr[1:-1, 1:-1] = 90 - np.rad2deg(angle)
+    angles_arr_v2 = np.rad2deg(angle) - 90
 
     # Assign angles_arr to hgrid
-    hgrid["angle_dx_mom6"] = (("nyp", "nxp"), angles_arr)
-    hgrid["angle_dx_mom6"].attrs["_FillValue"] = np.nan
-    hgrid["angle_dx_mom6"].attrs["units"] = "deg"
-    hgrid["angle_dx_mom6"].attrs[
-        "description"
-    ] = "MOM6 calculates angles internally, this field replicates that for rotating boundary conditions. Use this over other angle fields for MOM6 applications"
+    t_angles = xr.DataArray(
+        angles_arr_v2,
+        dims=["qy", "qx"],
+        coords={
+            "qy": tlon.nyp.values,
+            "qx": tlon.nxp.values,
+        },
+    )
+    return t_angles
 
-    return hgrid
+
+def get_hgrid_arakawa_c_points(hgrid: xr.Dataset, point_type="t") -> xr.Dataset:
+    """
+    Get the Arakawa C points from the Hgrid, originally written by Fred (Castruccio) and moved to RM6
+    Parameters
+    ----------
+    hgrid: xr.Dataset
+        The hgrid dataset
+    Returns
+    -------
+    xr.Dataset
+        The specific points x, y, & point indexes
+    """
+    if point_type not in "uvqt":
+        raise ValueError("point_type must be one of 'uvqt'")
+
+    regridding_logger.info("Getting {} points..".format(point_type))
+
+    # Figure out the maths for the offset
+    k = 2
+    kp2 = k // 2
+    offset_one_by_two_y = np.arange(kp2, len(hgrid.x.nyp), k)
+    offset_one_by_two_x = np.arange(kp2, len(hgrid.x.nxp), k)
+    by_two_x = np.arange(0, len(hgrid.x.nxp), k)
+    by_two_y = np.arange(0, len(hgrid.x.nyp), k)
+
+    # T point locations
+    if point_type == "t":
+        points = (offset_one_by_two_y, offset_one_by_two_x)
+    # U point locations
+    elif point_type == "u":
+        points = (offset_one_by_two_y, by_two_x)
+    # V point locations
+    elif point_type == "v":
+        points = (by_two_y, offset_one_by_two_x)
+    # Corner point locations
+    elif point_type == "q":
+        points = (by_two_y, by_two_x)
+    else:
+        raise ValueError("Invalid Point Type (u, v, q, or t only)")
+
+    point_dataset = xr.Dataset(
+        {
+            "{}lon".format(point_type): hgrid.x[points],
+            "{}lat".format(point_type): hgrid.y[points],
+            "{}_points_y".format(point_type): points[0],
+            "{}_points_x".format(point_type): points[1],
+        }
+    )
+    point_dataset.attrs["description"] = (
+        "Arakawa C {}-points of supplied h-grid".format(point_type)
+    )
+    return point_dataset
