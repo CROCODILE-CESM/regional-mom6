@@ -43,11 +43,13 @@ class RotationMethod(Enum):
     KEITH_DOUBLE_REGRIDDING: This method is used to regrid the boundary conditions to the t-points, b/c we can calculate t-point angle the same way as MOM6, rotate the conditions, and regrid again to the q-u-v, or actual, boundary
     FRED_AVERAGE: This method is used with the basis that we can find the angles at the q-u-v points by pretending we have another row/column of the hgrid with the same distances as the t-point to u/v points in the actual grid then use the four poitns to calculate the angle the exact same way MOM6 does.
     GIVEN_ANGLE: This is the original default RM6 method which expects a pre-given angle called angle_dx
+    NO_ROTATION: Grids parallel to lat/lon axes, no rotation needed
     """
 
     KEITH_DOUBLE_REGRIDDING = 1
     FRED_AVERAGE = 2
     GIVEN_ANGLE = 3
+    NO_ROTATION = 4
 
 
 regridding_logger = setup_logger(__name__)

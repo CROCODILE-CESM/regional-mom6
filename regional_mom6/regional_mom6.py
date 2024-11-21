@@ -2993,7 +2993,7 @@ class segment:
 
         return rcoord
 
-    def rotate(self, u, v):
+    def rotate(self, u, v, radian_angle):
         # Make docstring
 
         """
@@ -3002,19 +3002,23 @@ class segment:
         Args:
             u (xarray.DataArray): The u-component of the velocity.
             v (xarray.DataArray): The v-component of the velocity.
+            radian_angle (xarray.DataArray): The angle of the grid in RADIANS
 
         Returns:
             Tuple[xarray.DataArray, xarray.DataArray]: The rotated u and v components of the velocity.
         """
 
-        angle = self.coords.angle.values * np.pi / 180
-        u_rot = u * np.cos(angle) - v * np.sin(angle)
-        v_rot = u * np.sin(angle) + v * np.cos(angle)
+        u_rot = u * np.cos(radian_angle) - v * np.sin(radian_angle)
+        v_rot = u * np.sin(radian_angle) + v * np.cos(radian_angle)
         return u_rot, v_rot
 
-    def regrid_velocity_tracers(self):
+    def regrid_velocity_tracers(self, rotational_method=rgd.RotationMethod.GIVEN_ANGLE):
         """
         Cut out and interpolate the velocities and tracers
+        Paramaters
+        ----------
+        rotational_method: rgd.RotationMethod
+            The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
         """
 
         rawseg = xr.open_dataset(self.infile, decode_times=False, engine="netcdf4")
@@ -3036,7 +3040,14 @@ class segment:
                     [self.u, self.v, self.eta] + [self.tracers[i] for i in self.tracers]
                 ]
             )
-            rotated_u, rotated_v = self.rotate(regridded[self.u], regridded[self.v])
+            if rotational_method == rgd.RotationMethod.GIVEN_ANGLE:
+                rotated_u, rotated_v = self.rotate(
+                    regridded[self.u],
+                    regridded[self.v],
+                    radian_angle=self.coords.angle.values * np.pi / 180,
+                )
+            elif rotational_method == rgd.RotationMethod.NO_ROTATION:
+                rotated_u, rotated_v = regridded[self.u], regridded[self.v]
             rotated_ds = xr.Dataset(
                 {
                     self.u: rotated_u,
@@ -3063,10 +3074,17 @@ class segment:
             velocities_out = regridder_velocity(
                 rawseg[[self.u, self.v]].rename({self.xq: "lon", self.yq: "lat"})
             )
-
-            velocities_out["u"], velocities_out["v"] = self.rotate(
-                velocities_out["u"], velocities_out["v"]
-            )
+            if rotational_method == rgd.RotationMethod.GIVEN_ANGLE:
+                velocities_out["u"], velocities_out["v"] = self.rotate(
+                    velocities_out["u"],
+                    velocities_out["v"],
+                    radian_angle=self.coords.angle.values * np.pi / 180,
+                )
+            elif rotational_method == rgd.RotationMethod.NO_ROTATION:
+                velocities_out["u"], velocities_out["v"] = (
+                    velocities_out["u"],
+                    velocities_out["v"],
+                )
 
             segment_out = xr.merge(
                 [
@@ -3104,8 +3122,14 @@ class segment:
 
             regridded_u = regridder_uvelocity(rawseg[[self.u]])
             regridded_v = regridder_vvelocity(rawseg[[self.v]])
-
-            rotated_u, rotated_v = self.rotate(regridded_u[self.u], regridded_v[self.v])
+            if rotational_method == rgd.RotationMethod.GIVEN_ANGLE:
+                rotated_u, rotated_v = self.rotate(
+                    regridded[self.u],
+                    regridded[self.v],
+                    radian_angle=self.coords.angle.values * np.pi / 180,
+                )
+            elif rotational_method == rgd.RotationMethod.NO_ROTATION:
+                rotated_u, rotated_v = regridded[self.u], regridded[self.v]
             rotated_ds = xr.Dataset(
                 {
                     self.u: rotated_u,
@@ -3222,7 +3246,14 @@ class segment:
         return segment_out, encoding_dict
 
     def regrid_tides(
-        self, tpxo_v, tpxo_u, tpxo_h, times, method="nearest_s2d", periodic=False
+        self,
+        tpxo_v,
+        tpxo_u,
+        tpxo_h,
+        times,
+        rotational_method=rgd.RotationMethod.GIVEN_ANGLE,
+        method="nearest_s2d",
+        periodic=False,
     ):
         """
         This function:
@@ -3236,6 +3267,7 @@ class segment:
             infile_td (str): Raw Tidal File/Dir
             tpxo_v, tpxo_u, tpxo_h (xarray.Dataset): Specific adjusted for MOM6 tpxo datasets (Adjusted with setup_tides)
             times (pd.DateRange): The start date of our model period
+            rotational_method (rgd.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
         Returns:
             *.nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
 
@@ -3338,14 +3370,13 @@ class segment:
         ucplex = uredest + 1j * uimdest
         vcplex = vredest + 1j * vimdest
 
-        angle = coords["angle"]  # Fred's grid is in degrees
-
         # Convert complex u and v to ellipse,
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
-
-        INC -= np.radians(angle.data[np.newaxis, :])
+        if rotational_method == rgd.RotationMethod.GIVEN_ANGLE:
+            angle = coords["angle"]  # Fred's grid is in degrees
+            INC -= np.radians(angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
 
         # Convert to real amplitude and phase.
