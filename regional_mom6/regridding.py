@@ -468,13 +468,16 @@ def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.Dataset:
     )  # One quarter the conversion factor from degrees to radians
 
     ## Check length of longitude
-    len_lon = 360.0
-    G_len_lon = hgrid.x.max() - hgrid.x.min()
-    if G_len_lon != 360:
-        regridding_logger.info("This is a regional case")
-        len_lon = G_len_lon
+    G_len_lon = hgrid.x.max() - hgrid.x.min() # We're always going to be working with the regional case.... in the global case len_lon is different, and is a check in the actual MOM code.
+    len_lon = G_len_lon
 
-    angles_arr_v2 = np.zeros((len(tlon.nyp), len(tlon.nxp)))
+    # Get the tlon and tlat
+    ds_t = get_hgrid_arakawa_c_points(hgrid, "t")
+    tlon = ds_t.tlon
+    ds_q = get_hgrid_arakawa_c_points(hgrid, "q")
+    qlon = ds_q.qlon
+    qlat = ds_q.qlat
+    angles_arr = np.zeros((len(tlon.nyp), len(tlon.nxp)))
 
     # Compute lonB for all points
     lonB = np.zeros((2, 2, len(tlon.nyp), len(tlon.nxp)))
@@ -503,15 +506,15 @@ def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.Dataset:
         (qlat[:-1, :-1] - qlat[1:, 1:]) + (qlat[1:, 0:-1] - qlat[0:-1, 1:]),
     )
     # Assign angle to angles_arr
-    angles_arr_v2 = np.rad2deg(angle) - 90
+    angles_arr = np.rad2deg(angle) - 90
 
     # Assign angles_arr to hgrid
     t_angles = xr.DataArray(
-        angles_arr_v2,
-        dims=["qy", "qx"],
+        angles_arr,
+        dims=["nyp", "nxp"],
         coords={
-            "qy": tlon.nyp.values,
-            "qx": tlon.nxp.values,
+            "nyp": tlon.nyp.values,
+            "nxp": tlon.nxp.values,
         },
     )
     return t_angles
@@ -529,8 +532,8 @@ def get_hgrid_arakawa_c_points(hgrid: xr.Dataset, point_type="t") -> xr.Dataset:
     xr.Dataset
         The specific points x, y, & point indexes
     """
-    if point_type not in "uvqt":
-        raise ValueError("point_type must be one of 'uvqt'")
+    if point_type not in "uvqth":
+        raise ValueError("point_type must be one of 'uvqht'")
 
     regridding_logger.info("Getting {} points..".format(point_type))
 
@@ -543,7 +546,7 @@ def get_hgrid_arakawa_c_points(hgrid: xr.Dataset, point_type="t") -> xr.Dataset:
     by_two_y = np.arange(0, len(hgrid.x.nyp), k)
 
     # T point locations
-    if point_type == "t":
+    if point_type == "t" or point_type == "h":
         points = (offset_one_by_two_y, offset_one_by_two_x)
     # U point locations
     elif point_type == "u":
@@ -555,7 +558,7 @@ def get_hgrid_arakawa_c_points(hgrid: xr.Dataset, point_type="t") -> xr.Dataset:
     elif point_type == "q":
         points = (by_two_y, by_two_x)
     else:
-        raise ValueError("Invalid Point Type (u, v, q, or t only)")
+        raise ValueError("Invalid Point Type (u, v, q, or t/h only)")
 
     point_dataset = xr.Dataset(
         {
