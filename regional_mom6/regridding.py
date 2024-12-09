@@ -468,7 +468,9 @@ def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.Dataset:
     )  # One quarter the conversion factor from degrees to radians
 
     ## Check length of longitude
-    G_len_lon = hgrid.x.max() - hgrid.x.min() # We're always going to be working with the regional case.... in the global case len_lon is different, and is a check in the actual MOM code.
+    G_len_lon = (
+        hgrid.x.max() - hgrid.x.min()
+    )  # We're always going to be working with the regional case.... in the global case len_lon is different, and is a check in the actual MOM code.
     len_lon = G_len_lon
 
     # Get the tlon and tlat
