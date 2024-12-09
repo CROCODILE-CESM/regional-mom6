@@ -2930,7 +2930,13 @@ class segment:
         """
 
         rawseg = xr.open_dataset(self.infile, decode_times=False, engine="netcdf4")
-        coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
+
+        if rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+            coords = rgd.coords(
+                self.hgrid, self.orientation, self.segment_name, coords_at_t_points=True
+            )
+        else:
+            coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
         if self.arakawa_grid == "A":
 
@@ -2963,6 +2969,20 @@ class segment:
                     regridded[self.v],
                     radian_angle=np.radians(degree_angle.values),
                 )
+            elif rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+                degree_angle = rgd.initialize_grid_rotation_angle(self.hgrid)
+                rotated_u, rotated_v = self.rotate(
+                    regridded[self.u],
+                    regridded[self.v],
+                    radian_angle=np.radians(degree_angle.values),
+                )
+
+                coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
+                u_regridder = rgd.create_regridder(rotated_u, coords, ".temp")
+                v_regridder = rgd.create_regridder(rotated_v, coords, ".temp")
+                rotated_u = u_regridder(rotated_u)
+                rotated_v = v_regridder(rotated_v)
+
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 rotated_u, rotated_v = regridded[self.u], regridded[self.v]
             rotated_ds = xr.Dataset(
@@ -3006,6 +3026,19 @@ class segment:
                     velocities_out["v"],
                     radian_angle=np.radians(degree_angle.values),
                 )
+            elif rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+                degree_angle = rgd.initialize_grid_rotation_angle(self.hgrid)
+                velocities_out["u"], velocities_out["v"] = self.rotate(
+                    velocities_out["u"],
+                    velocities_out["v"],
+                    radian_angle=np.radians(degree_angle.values),
+                )
+
+                coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
+                u_regridder = rgd.create_regridder(velocities_out["u"], coords, ".temp")
+                v_regridder = rgd.create_regridder(velocities_out["v"], coords, ".temp")
+                velocities_out["u"] = u_regridder(velocities_out["u"])
+                velocities_out["v"] = v_regridder(velocities_out["v"])
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 velocities_out["u"], velocities_out["v"] = (
                     velocities_out["u"],
@@ -3063,6 +3096,19 @@ class segment:
                     regridded[self.v],
                     radian_angle=np.radians(degree_angle.values),
                 )
+            elif rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+                degree_angle = rgd.initialize_grid_rotation_angle(self.hgrid)
+                rotated_u, rotated_v = self.rotate(
+                    regridded[self.u],
+                    regridded[self.v],
+                    radian_angle=np.radians(coords.angle.values),
+                )
+
+                coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
+                u_regridder = rgd.create_regridder(rotated_u, coords, ".temp")
+                v_regridder = rgd.create_regridder(rotated_v, coords, ".temp")
+                rotated_u = u_regridder(rotated_u)
+                rotated_v = v_regridder(rotated_v)
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 rotated_u, rotated_v = regridded[self.u], regridded[self.v]
             rotated_ds = xr.Dataset(
@@ -3220,7 +3266,7 @@ class segment:
         Web Address: https://github.com/jsimkins2/nwa25
         """
 
-        # Establish Coord
+        # Establish Coords
         coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
         ########## Tidal Elevation: Horizontally interpolate elevation components ############
@@ -3275,6 +3321,13 @@ class segment:
         self.encode_tidal_files_and_output(ds_ap, "tz")
 
         ########### Regrid Tidal Velocity ######################
+
+        # Change to t-point coords
+        if rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+            coords = rgd.coords(
+                self.hgrid, self.orientation, self.segment_name, coords_at_t_points=True
+            )
+
         regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords, ".temp")
         regrid_v = rgd.create_regridder(tpxo_v[["lon", "lat", "vRe"]], coords, ".temp2")
 
@@ -3315,7 +3368,22 @@ class segment:
                 self.hgrid
             )
             INC -= np.radians(degree_angle.data[np.newaxis, :])
+        elif rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+            angle = rgd.initialize_grid_rotation_angle(self.hgrid)
+            INC -= np.radians(angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
+
+        # Regrid back to real boundary
+        if rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+            coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
+            ua_regrid = rgd.create_regridder(ua, coords, ".temp")
+            ua = ua_regrid(ua)
+            va_regrid = rgd.create_regridder(va, coords, ".temp")
+            va = va_regrid(va)
+            up_regrid = rgd.create_regridder(up, coords, ".temp")
+            up = up_regrid(up)
+            vp_regrid = rgd.create_regridder(vp, coords, ".temp")
+            vp = vp_regrid(vp)
 
         # Convert to real amplitude and phase.
         ds_ap = xr.Dataset(
