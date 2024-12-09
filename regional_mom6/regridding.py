@@ -580,43 +580,77 @@ def create_pseudo_hgrid(hgrid: xr.Dataset) -> xr.Dataset:
     """
     Adds an additional boundary to the hgrid to allow for the calculation of the angle_dx for the boundary points using the method in MOM6
     """
-    pseudo_hgrid_x = np.full((len(hgrid.nyp) + 2, len(hgrid.nxp)+2), np.nan)
-    pseudo_hgrid_y = np.full((len(hgrid.nyp) + 2, len(hgrid.nxp)+2), np.nan)
+    pseudo_hgrid_x = np.full((len(hgrid.nyp) + 2, len(hgrid.nxp) + 2), np.nan)
+    pseudo_hgrid_y = np.full((len(hgrid.nyp) + 2, len(hgrid.nxp) + 2), np.nan)
 
     ## Fill Boundaries
     pseudo_hgrid_x[1:-1, 1:-1] = hgrid.x.values
-    pseudo_hgrid_x[0, 1:-1] = hgrid.x.values[0,:] - (hgrid.x.values[1,:] - hgrid.x.values[0,:]) # Bottom Fill
-    pseudo_hgrid_x[-1, 1:-1] = hgrid.x.values[-1,:] + (hgrid.x.values[-1,:] - hgrid.x.values[-2,:]) # Top Fill
-    pseudo_hgrid_x[1:-1, 0] = hgrid.x.values[:,0] - (hgrid.x.values[:,1] - hgrid.x.values[:,0]) # Left Fill
-    pseudo_hgrid_x[1:-1, -1] = hgrid.x.values[:,-1] + (hgrid.x.values[:,-1] - hgrid.x.values[:,-2]) # Right Fill
+    pseudo_hgrid_x[0, 1:-1] = hgrid.x.values[0, :] - (
+        hgrid.x.values[1, :] - hgrid.x.values[0, :]
+    )  # Bottom Fill
+    pseudo_hgrid_x[-1, 1:-1] = hgrid.x.values[-1, :] + (
+        hgrid.x.values[-1, :] - hgrid.x.values[-2, :]
+    )  # Top Fill
+    pseudo_hgrid_x[1:-1, 0] = hgrid.x.values[:, 0] - (
+        hgrid.x.values[:, 1] - hgrid.x.values[:, 0]
+    )  # Left Fill
+    pseudo_hgrid_x[1:-1, -1] = hgrid.x.values[:, -1] + (
+        hgrid.x.values[:, -1] - hgrid.x.values[:, -2]
+    )  # Right Fill
 
     pseudo_hgrid_y[1:-1, 1:-1] = hgrid.y.values
-    pseudo_hgrid_y[0, 1:-1] = hgrid.y.values[0,:] - (hgrid.y.values[1,:] - hgrid.y.values[0,:]) # Bottom Fill
-    pseudo_hgrid_y[-1, 1:-1] = hgrid.y.values[-1,:] + (hgrid.y.values[-1,:] - hgrid.y.values[-2,:]) # Top Fill
-    pseudo_hgrid_y[1:-1, 0] = hgrid.y.values[:,0] - (hgrid.y.values[:,1] - hgrid.y.values[:,0]) # Left Fill
-    pseudo_hgrid_y[1:-1, -1] = hgrid.y.values[:,-1] + (hgrid.y.values[:,-1] - hgrid.y.values[:,-2]) # Right Fill
-
+    pseudo_hgrid_y[0, 1:-1] = hgrid.y.values[0, :] - (
+        hgrid.y.values[1, :] - hgrid.y.values[0, :]
+    )  # Bottom Fill
+    pseudo_hgrid_y[-1, 1:-1] = hgrid.y.values[-1, :] + (
+        hgrid.y.values[-1, :] - hgrid.y.values[-2, :]
+    )  # Top Fill
+    pseudo_hgrid_y[1:-1, 0] = hgrid.y.values[:, 0] - (
+        hgrid.y.values[:, 1] - hgrid.y.values[:, 0]
+    )  # Left Fill
+    pseudo_hgrid_y[1:-1, -1] = hgrid.y.values[:, -1] + (
+        hgrid.y.values[:, -1] - hgrid.y.values[:, -2]
+    )  # Right Fill
 
     ## Fill Corners
-    pseudo_hgrid_x[0, 0] = hgrid.x.values[0,0] - (hgrid.x.values[1,1] - hgrid.x.values[0,0]) # Bottom Left
-    pseudo_hgrid_x[-1, 0] = hgrid.x.values[-1,0] - (hgrid.x.values[-2,1] - hgrid.x.values[-1,0]) # Top Left
-    pseudo_hgrid_x[0, -1] = hgrid.x.values[0,-1] - (hgrid.x.values[1,-2] - hgrid.x.values[0,-1]) # Bottom Right
-    pseudo_hgrid_x[-1, -1] = hgrid.x.values[-1,-1] - (hgrid.x.values[-2,-2] - hgrid.x.values[-1,-1]) # Top Right
+    pseudo_hgrid_x[0, 0] = hgrid.x.values[0, 0] - (
+        hgrid.x.values[1, 1] - hgrid.x.values[0, 0]
+    )  # Bottom Left
+    pseudo_hgrid_x[-1, 0] = hgrid.x.values[-1, 0] - (
+        hgrid.x.values[-2, 1] - hgrid.x.values[-1, 0]
+    )  # Top Left
+    pseudo_hgrid_x[0, -1] = hgrid.x.values[0, -1] - (
+        hgrid.x.values[1, -2] - hgrid.x.values[0, -1]
+    )  # Bottom Right
+    pseudo_hgrid_x[-1, -1] = hgrid.x.values[-1, -1] - (
+        hgrid.x.values[-2, -2] - hgrid.x.values[-1, -1]
+    )  # Top Right
 
-    pseudo_hgrid_y[0, 0] = hgrid.y.values[0,0] - (hgrid.y.values[1,1] - hgrid.y.values[0,0]) # Bottom Left
-    pseudo_hgrid_y[-1, 0] = hgrid.y.values[-1,0] - (hgrid.y.values[-2,1] - hgrid.y.values[-1,0]) # Top Left
-    pseudo_hgrid_y[0, -1] = hgrid.y.values[0,-1] - (hgrid.y.values[1,-2] - hgrid.y.values[0,-1]) # Bottom Right
-    pseudo_hgrid_y[-1, -1] = hgrid.y.values[-1,-1] - (hgrid.y.values[-2,-2] - hgrid.y.values[-1,-1]) # Top Right
+    pseudo_hgrid_y[0, 0] = hgrid.y.values[0, 0] - (
+        hgrid.y.values[1, 1] - hgrid.y.values[0, 0]
+    )  # Bottom Left
+    pseudo_hgrid_y[-1, 0] = hgrid.y.values[-1, 0] - (
+        hgrid.y.values[-2, 1] - hgrid.y.values[-1, 0]
+    )  # Top Left
+    pseudo_hgrid_y[0, -1] = hgrid.y.values[0, -1] - (
+        hgrid.y.values[1, -2] - hgrid.y.values[0, -1]
+    )  # Bottom Right
+    pseudo_hgrid_y[-1, -1] = hgrid.y.values[-1, -1] - (
+        hgrid.y.values[-2, -2] - hgrid.y.values[-1, -1]
+    )  # Top Right
 
-    pseudo_hgrid = xr.Dataset( 
-    {
-        "x": (["nyp", "nxp"], pseudo_hgrid_x),
-        "y": (["nyp", "nxp"], pseudo_hgrid_y),
-    }
+    pseudo_hgrid = xr.Dataset(
+        {
+            "x": (["nyp", "nxp"], pseudo_hgrid_x),
+            "y": (["nyp", "nxp"], pseudo_hgrid_y),
+        }
     )
     return pseudo_hgrid
 
-def initialize_hgrid_rotation_angles_using_pseudo_hgrid(hgrid: xr.Dataset, pseudo_hgrid:xr.Dataset)->xr.Dataset:
+
+def initialize_hgrid_rotation_angles_using_pseudo_hgrid(
+    hgrid: xr.Dataset, pseudo_hgrid: xr.Dataset
+) -> xr.Dataset:
     """
     Calculate the angle_dx in degrees from the true x (east?) direction counterclockwise) and return as dataarray
 
@@ -637,7 +671,9 @@ def initialize_hgrid_rotation_angles_using_pseudo_hgrid(hgrid: xr.Dataset, pseud
     )  # One quarter the conversion factor from degrees to radians
 
     ## Check length of longitude
-    G_len_lon = pseudo_hgrid.x.max() - pseudo_hgrid.x.min() # We're always going to be working with the regional case.... in the global case len_lon is different, and is a check in the actual MOM code.
+    G_len_lon = (
+        pseudo_hgrid.x.max() - pseudo_hgrid.x.min()
+    )  # We're always going to be working with the regional case.... in the global case len_lon is different, and is a check in the actual MOM code.
     len_lon = G_len_lon
 
     angles_arr = np.zeros((len(hgrid.nyp), len(hgrid.nxp)))
@@ -648,28 +684,31 @@ def initialize_hgrid_rotation_angles_using_pseudo_hgrid(hgrid: xr.Dataset, pseud
     # Vectorized computation of lonB
     lonB[0][0] = modulo_around_point(
         pseudo_hgrid.x[:-2, :-2], hgrid.x, len_lon
-    ) # Bottom Left
+    )  # Bottom Left
     lonB[1][0] = modulo_around_point(
         pseudo_hgrid.x[2:, :-2], hgrid.x, len_lon
-    ) # Top Left
+    )  # Top Left
     lonB[1][1] = modulo_around_point(
         pseudo_hgrid.x[2:, 2:], hgrid.x, len_lon
-    ) # Top Right
+    )  # Top Right
     lonB[0][1] = modulo_around_point(
         pseudo_hgrid.x[:-2, 2:], hgrid.x, len_lon
-    ) # Bottom Right
-
+    )  # Bottom Right
 
     # Compute lon_scale
     lon_scale = np.cos(
         pi_720deg
-        * ((pseudo_hgrid.y[:-2, :-2] + pseudo_hgrid.y[:-2, 2:]) + (pseudo_hgrid.y[2:, 2:] + pseudo_hgrid.y[2:, :-2]))
+        * (
+            (pseudo_hgrid.y[:-2, :-2] + pseudo_hgrid.y[:-2, 2:])
+            + (pseudo_hgrid.y[2:, 2:] + pseudo_hgrid.y[2:, :-2])
+        )
     )
 
     # Compute angle
     angle = np.arctan2(
         lon_scale * ((lonB[0, 1] - lonB[1, 0]) + (lonB[1, 1] - lonB[0, 0])),
-        (pseudo_hgrid.y[:-2, :-2] -pseudo_hgrid.y[2:, 2:]) + (pseudo_hgrid.y[2:, :-2] - pseudo_hgrid.y[:-2, 2:]),
+        (pseudo_hgrid.y[:-2, :-2] - pseudo_hgrid.y[2:, 2:])
+        + (pseudo_hgrid.y[2:, :-2] - pseudo_hgrid.y[:-2, 2:]),
     )
     # Assign angle to angles_arr
     angles_arr = np.rad2deg(angle) - 90
@@ -684,6 +723,3 @@ def initialize_hgrid_rotation_angles_using_pseudo_hgrid(hgrid: xr.Dataset, pseud
         },
     )
     return t_angles
-
-
-

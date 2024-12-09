@@ -2901,7 +2901,6 @@ class segment:
         self.segment_name = segment_name
         self.repeat_year_forcing = repeat_year_forcing
 
-
     def rotate(self, u, v, radian_angle):
         # Make docstring
 
@@ -2953,14 +2952,16 @@ class segment:
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
                     regridded[self.v],
-                    radian_angle=np.radians(coords.angle.values)
+                    radian_angle=np.radians(coords.angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.FRED_AVERAGE:
-                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(
+                    self.hgrid
+                )
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
                     regridded[self.v],
-                    radian_angle=np.radians(degree_angle.values)
+                    radian_angle=np.radians(degree_angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 rotated_u, rotated_v = regridded[self.u], regridded[self.v]
@@ -2994,14 +2995,16 @@ class segment:
                 velocities_out["u"], velocities_out["v"] = self.rotate(
                     velocities_out["u"],
                     velocities_out["v"],
-                    radian_angle=np.radians(coords.angle.values)
+                    radian_angle=np.radians(coords.angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.FRED_AVERAGE:
-                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(
+                    self.hgrid
+                )
                 velocities_out["u"], velocities_out["v"] = self.rotate(
                     velocities_out["u"],
                     velocities_out["v"],
-                    radian_angle=np.radians(degree_angle.values)
+                    radian_angle=np.radians(degree_angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 velocities_out["u"], velocities_out["v"] = (
@@ -3049,14 +3052,16 @@ class segment:
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
                     regridded[self.v],
-                    radian_angle= np.radians(coords.angle.values)
+                    radian_angle=np.radians(coords.angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.FRED_AVERAGE:
-                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(
+                    self.hgrid
+                )
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
                     regridded[self.v],
-                    radian_angle= np.radians(degree_angle.values)
+                    radian_angle=np.radians(degree_angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 rotated_u, rotated_v = regridded[self.u], regridded[self.v]
@@ -3306,8 +3311,10 @@ class segment:
             angle = coords["angle"]  # Fred's grid is in degrees
             INC -= np.radians(angle.data[np.newaxis, :])
         elif rotational_method == rgd.RotationMethod.FRED_AVERAGE:
-                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
-                INC -= np.radians(degree_angle.data[np.newaxis, :])
+            degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(
+                self.hgrid
+            )
+            INC -= np.radians(degree_angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
 
         # Convert to real amplitude and phase.
