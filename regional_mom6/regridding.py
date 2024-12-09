@@ -649,7 +649,7 @@ def create_pseudo_hgrid(hgrid: xr.Dataset) -> xr.Dataset:
 
 
 def initialize_hgrid_rotation_angles_using_pseudo_hgrid(
-    hgrid: xr.Dataset, pseudo_hgrid: xr.Dataset
+    hgrid: xr.Dataset,
 ) -> xr.Dataset:
     """
     Calculate the angle_dx in degrees from the true x (east?) direction counterclockwise) and return as dataarray
@@ -665,6 +665,9 @@ def initialize_hgrid_rotation_angles_using_pseudo_hgrid(
     xr.DataArray
         The t-point angles
     """
+    # Get Fred Pseudo grid
+    pseudo_hgrid = create_pseudo_hgrid(hgrid)
+
     # Direct Translation
     pi_720deg = (
         np.arctan(1) / 180
