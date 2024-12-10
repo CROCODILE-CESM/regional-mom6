@@ -1,9 +1,13 @@
 # Rotation and angle calculation in RM6 using MOM6 Angle Calculation  
-This document explains the process by which Regional MOM6 calculates the angle of curved hgrids. MOM6 doesn't actually use the user-provided "angle_dx" field in input hgrids, but internally calculates the angle. To accomodate this fact when we rotate our boundary conditions, we implemented MOM6 angle calculation in a file called "rotation.py", and adjusted functions where we regrid the boundary conditions.
+This document explains the implementation of MOM6 angle calculation in RM6, which is the process by which RM6 calculates the angle of curved hgrids. 
+
+**Issue:** MOM6 doesn't actually use the user-provided "angle_dx" field in input hgrids, but internally calculates the angle. 
+
+**Solution:** To accomodate this fact, when we rotate our boundary conditions, we implemented MOM6 angle calculation in a file called "rotation.py", and adjusted functions where we regrid the boundary conditions.
 
 
 ## MOM6 process of angle calculation (T-point only)
-1. Calculate pi/4rads / 180 degress  = Gives a 1/4 conversion of degrees to radians. I.E. multiplying an angle in degrees by this gives the conversion to radians at 1/4 the value. 
+1. Calculate pi/4rads / 180 degrees  = Gives a 1/4 conversion of degrees to radians. I.E. multiplying an angle in degrees by this gives the conversion to radians at 1/4 the value. 
 2. Figure out the longitudunal extent of our domain, or periodic range of longitudes. For global cases it is len_lon = 360, for our regional cases it is given by the hgrid.
 3. At each point on our hgrid, we find the q-point to the top left, bottom left, bottom right, top right. We adjust each of these longitudes to be in the range of len_lon around the point itself. (module_around_point)
 4. We then find the lon_scale, which is the "trigonometric scaling factor converting changes in longitude to equivalent distances in latitudes". Whatever that actually means is we add the latitude of all four of these points from part 3 and basically average it and convert to radians. We then take the cosine of it. As I understand it, it's a conversion of longitude to equivalent latitude distance. 
@@ -23,7 +27,7 @@ MOM6 only calculates the angle at t-points. For boundary rotation, we need the a
 3. **KEITH_DOUBLE_REGRIDDING**: Regrid the boundary conditions to the t-points. Rotate using the MOM6 angle calculation. Regrid to the boundary.
 
 
-## Implementation
+## Code Description
 
 Most calculation code is implemented in the rotation.py script, and the functional uses are in regrid_velocity_tracers and regrid_tides functions in the segment class of RM6.
 
