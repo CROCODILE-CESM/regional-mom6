@@ -2973,30 +2973,82 @@ class segment:
                     radian_angle=np.radians(coords.angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.FRED_AVERAGE:
-                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(
-                    self.hgrid
+                self.hgrid["angle_dx_rm6"] = (
+                    rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
                 )
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
                     regridded[self.v],
                     radian_angle=np.radians(degree_angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-                degree_angle = rgd.initialize_grid_rotation_angle(self.hgrid)
+                ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
+                self.hgrid["angle_dx_rm6"] = xr.full_like(
+                    self.hgrid["angle_dx"], np.nan
+                )
+                self.hgrid["angle_dx_rm6"][
+                    ds.t_points_y.values, ds.t_points_x.values
+                ] = rgd.initialize_grid_rotation_angle(self.hgrid)
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    coords_at_t_points=True,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
                     regridded[self.v],
                     radian_angle=np.radians(degree_angle.values),
                 )
-
                 coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
-                u_regridder = rgd.create_regridder(rotated_u, coords, ".temp")
-                v_regridder = rgd.create_regridder(rotated_v, coords, ".temp")
-                rotated_u = u_regridder(rotated_u)
-                rotated_v = v_regridder(rotated_v)
+
+                ds = xr.Dataset()
+
+                expanded_lat = np.tile(rotated_u.lat, (1, 1))
+                expanded_lon = np.tile(rotated_u.lon, (1, 1))
+                ds["lat"] = xr.DataArray(expanded_lat, dims=("y", "x"))
+                ds["lon"] = xr.DataArray(expanded_lon, dims=("y", "x"))
+
+                exp_rotated_u = [rotated_u]
+                ds["rotated_u"] = xr.DataArray(
+                    exp_rotated_u, dims=("y", "time", "depth", "x")
+                )
+
+                exp_rotated_v = [rotated_v]
+                ds["rotated_v"] = xr.DataArray(
+                    exp_rotated_v, dims=("y", "time", "depth", "x")
+                )
+
+                regridder_keith = rgd.create_regridder(
+                    ds, coords, ".temp", method="nearest_s2d"
+                )
+                rotated_u = regridder_keith(ds["rotated_u"])
+                rotated_v = regridder_keith(ds["rotated_v"])
+
+                ## Also need to re-regrid the rest of the variables with the correct coords
+                regridder = rgd.create_regridder(
+                    rawseg[self.u],
+                    coords,
+                    self.outfolder
+                    / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
+                )
+                regridded = regridder(
+                    rawseg[
+                        [self.u, self.v, self.eta]
+                        + [self.tracers[i] for i in self.tracers]
+                    ]
+                )
 
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 rotated_u, rotated_v = regridded[self.u], regridded[self.v]
+
             rotated_ds = xr.Dataset(
                 {
                     self.u: rotated_u,
@@ -3030,16 +3082,35 @@ class segment:
                     radian_angle=np.radians(coords.angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.FRED_AVERAGE:
-                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(
-                    self.hgrid
+                self.hgrid["angle_dx_rm6"] = (
+                    rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
                 )
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
                 velocities_out["u"], velocities_out["v"] = self.rotate(
                     velocities_out["u"],
                     velocities_out["v"],
                     radian_angle=np.radians(degree_angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-                degree_angle = rgd.initialize_grid_rotation_angle(self.hgrid)
+                ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
+                self.hgrid["angle_dx_rm6"] = xr.full_like(
+                    self.hgrid["angle_dx"], np.nan
+                )
+                self.hgrid["angle_dx_rm6"][
+                    ds.t_points_y.values, ds.t_points_x.values
+                ] = rgd.initialize_grid_rotation_angle(self.hgrid)
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    coords_at_t_points=True,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
                 velocities_out["u"], velocities_out["v"] = self.rotate(
                     velocities_out["u"],
                     velocities_out["v"],
@@ -3047,10 +3118,44 @@ class segment:
                 )
 
                 coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
-                u_regridder = rgd.create_regridder(velocities_out["u"], coords, ".temp")
-                v_regridder = rgd.create_regridder(velocities_out["v"], coords, ".temp")
-                velocities_out["u"] = u_regridder(velocities_out["u"])
-                velocities_out["v"] = v_regridder(velocities_out["v"])
+
+                ds = xr.Dataset()
+
+                expanded_lat = np.tile(velocities_out["u"].lat, (1, 1))
+                expanded_lon = np.tile(velocities_out["u"].lon, (1, 1))
+                ds["lat"] = xr.DataArray(expanded_lat, dims=("y", "x"))
+                ds["lon"] = xr.DataArray(expanded_lon, dims=("y", "x"))
+
+                exp_rotated_u = [velocities_out["u"]]
+                ds["rotated_u"] = xr.DataArray(
+                    exp_rotated_u, dims=("y", "time", "depth", "x")
+                )
+
+                exp_rotated_v = [velocities_out["v"]]
+                ds["rotated_v"] = xr.DataArray(
+                    exp_rotated_v, dims=("y", "time", "depth", "x")
+                )
+
+                regridder_keith = rgd.create_regridder(
+                    ds, coords, ".temp", method="nearest_s2d"
+                )
+                velocities_out["u"] = regridder_keith(ds["rotated_u"])
+                velocities_out["v"] = regridder_keith(ds["rotated_v"])
+
+                ## Also need to re-regrid the rest of the variables with the correct coords
+                regridder = rgd.create_regridder(
+                    rawseg[self.u],
+                    coords,
+                    self.outfolder
+                    / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
+                )
+                regridded = regridder(
+                    rawseg[
+                        [self.u, self.v, self.eta]
+                        + [self.tracers[i] for i in self.tracers]
+                    ]
+                )
+
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 velocities_out["u"], velocities_out["v"] = (
                     velocities_out["u"],
@@ -3100,16 +3205,35 @@ class segment:
                     radian_angle=np.radians(coords.angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.FRED_AVERAGE:
-                degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(
-                    self.hgrid
+                self.hgrid["angle_dx_rm6"] = (
+                    rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
                 )
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
                     regridded[self.v],
                     radian_angle=np.radians(degree_angle.values),
                 )
             elif rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-                degree_angle = rgd.initialize_grid_rotation_angle(self.hgrid)
+                ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
+                self.hgrid["angle_dx_rm6"] = xr.full_like(
+                    self.hgrid["angle_dx"], np.nan
+                )
+                self.hgrid["angle_dx_rm6"][
+                    ds.t_points_y.values, ds.t_points_x.values
+                ] = rgd.initialize_grid_rotation_angle(self.hgrid)
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    coords_at_t_points=True,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
                     regridded[self.v],
@@ -3117,10 +3241,42 @@ class segment:
                 )
 
                 coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
-                u_regridder = rgd.create_regridder(rotated_u, coords, ".temp")
-                v_regridder = rgd.create_regridder(rotated_v, coords, ".temp")
-                rotated_u = u_regridder(rotated_u)
-                rotated_v = v_regridder(rotated_v)
+                ds = xr.Dataset()
+
+                expanded_lat = np.tile(rotated_u.lat, (1, 1))
+                expanded_lon = np.tile(rotated_u.lon, (1, 1))
+                ds["lat"] = xr.DataArray(expanded_lat, dims=("y", "x"))
+                ds["lon"] = xr.DataArray(expanded_lon, dims=("y", "x"))
+
+                exp_rotated_u = [rotated_u]
+                ds["rotated_u"] = xr.DataArray(
+                    exp_rotated_u, dims=("y", "time", "depth", "x")
+                )
+
+                exp_rotated_v = [rotated_v]
+                ds["rotated_v"] = xr.DataArray(
+                    exp_rotated_v, dims=("y", "time", "depth", "x")
+                )
+
+                regridder_keith = rgd.create_regridder(
+                    ds, coords, ".temp", method="nearest_s2d"
+                )
+                rotated_u = regridder_keith(ds["rotated_u"])
+                rotated_v = regridder_keith(ds["rotated_v"])
+
+                ## Also need to re-regrid the rest of the variables with the correct coords
+                regridder = rgd.create_regridder(
+                    rawseg[self.u],
+                    coords,
+                    self.outfolder
+                    / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
+                )
+                regridded = regridder(
+                    rawseg[
+                        [self.u, self.v, self.eta]
+                        + [self.tracers[i] for i in self.tracers]
+                    ]
+                )
             elif rotational_method == rgd.RotationMethod.NO_ROTATION:
                 rotated_u, rotated_v = regridded[self.u], regridded[self.v]
             rotated_ds = xr.Dataset(
@@ -3380,7 +3536,6 @@ class segment:
             self.hgrid["angle_dx_rm6"] = (
                 rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
             )
-            breakpoint()
             degree_angle = rgd.coords(
                 self.hgrid,
                 self.orientation,
