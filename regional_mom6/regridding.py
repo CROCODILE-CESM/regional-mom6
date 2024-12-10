@@ -453,7 +453,101 @@ def modulo_around_point(x, xc, Lx):
         return ((x - (xc - 0.5 * Lx)) % Lx) - Lx / 2 + xc
 
 
-def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.Dataset:
+def mom6_angle_calculation_method(
+    len_lon,
+    top_left: xr.DataArray,
+    top_right: xr.DataArray,
+    bottom_left: xr.DataArray,
+    bottom_right: xr.DataArray,
+    point: xr.DataArray,
+) -> xr.DataArray:
+    """
+    Calculate the angle of the point using the MOM6 method in initialize_grid_rotation_angle. Built for vectorized calculations
+    Parameters
+    ----------
+    len_lon: float
+        The length of the longitude of the regional domain
+    top_left, top_right, bottom_left, bottom_right: xr.DataArray
+        The four points around the point to calculate the angle from the hgrid requires an x and y component
+    point: xr.DataArray
+        The point to calculate the angle from the hgrid
+    Returns
+    -------
+    xr.DataArray
+        The angle of the point
+    """
+    regridding_logger.info("Calculating grid rotation angle")
+    # Direct Translation
+    pi_720deg = (
+        np.arctan(1) / 180
+    )  # One quarter the conversion factor from degrees to radians
+
+    # Compute lonB for all points
+    lonB = np.zeros((2, 2, len(point.nyp), len(point.nxp)))
+
+    # Vectorized computation of lonB
+    # Vectorized computation of lonB
+    lonB[0][0] = modulo_around_point(bottom_left.x, point.x, len_lon)  # Bottom Left
+    lonB[1][0] = modulo_around_point(top_left.x, point.x, len_lon)  # Top Left
+    lonB[1][1] = modulo_around_point(top_right.x, point.x, len_lon)  # Top Right
+    lonB[0][1] = modulo_around_point(bottom_right.x, point.x, len_lon)  # Bottom Right
+
+    # Compute lon_scale
+    lon_scale = np.cos(
+        pi_720deg * ((bottom_left.y + bottom_right.y) + (top_right.y + top_left.y))
+    )
+
+    # Compute angle
+    angle = np.arctan2(
+        lon_scale * ((lonB[0, 1] - lonB[1, 0]) + (lonB[1, 1] - lonB[0, 0])),
+        (bottom_left.y - top_right.y) + (top_left.y - bottom_right.y),
+    )
+    # Assign angle to angles_arr
+    angles_arr = np.rad2deg(angle) - 90
+
+    # Assign angles_arr to hgrid
+    t_angles = xr.DataArray(
+        angles_arr,
+        dims=["nyp", "nxp"],
+        coords={
+            "nyp": point.nyp.values,
+            "nxp": point.nxp.values,
+        },
+    )
+    return t_angles
+
+
+def initialize_hgrid_rotation_angles_using_pseudo_hgrid(
+    hgrid: xr.Dataset,
+) -> xr.Dataset:
+    """
+    Calculate the angle_dx in degrees from the true x (east?) direction counterclockwise) and return as dataarray
+
+    Parameters
+    ----------
+    hgrid: xr.Dataset
+        The hgrid dataset
+    pseudo_hgrid: xr.Dataset
+        The pseudo hgrid dataset
+    Returns
+    -------
+    xr.DataArray
+        The t-point angles
+    """
+    # Get Fred Pseudo grid
+    pseudo_hgrid = create_pseudo_hgrid(hgrid)
+
+    return mom6_angle_calculation_method(
+        pseudo_hgrid.x.max() - pseudo_hgrid.x.min(),
+        pseudo_hgrid.isel(nyp=slice(2, None), nxp=slice(0, -2)),
+        pseudo_hgrid.isel(nyp=slice(2, None), nxp=slice(2, None)),
+        pseudo_hgrid.isel(nyp=slice(0, -2), nxp=slice(0, -2)),
+        pseudo_hgrid.isel(nyp=slice(0, -2), nxp=slice(2, None)),
+        hgrid,
+    )
+
+
+def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.DataArray:
     """
     Calculate the angle_dx in degrees from the true x (east?) direction counterclockwise) and return as DataArray
     Parameters
@@ -465,65 +559,31 @@ def initialize_grid_rotation_angle(hgrid: xr.Dataset) -> xr.Dataset:
     xr.DataArray
         The t-point angles
     """
-    regridding_logger.info("Initializing grid rotation angle")
-    # Direct Translation
-    pi_720deg = (
-        np.arctan(1) / 180
-    )  # One quarter the conversion factor from degrees to radians
-
-    ## Check length of longitude
-    G_len_lon = (
-        hgrid.x.max() - hgrid.x.min()
-    )  # We're always going to be working with the regional case.... in the global case len_lon is different, and is a check in the actual MOM code.
-    len_lon = G_len_lon
-
-    # Get the tlon and tlat
     ds_t = get_hgrid_arakawa_c_points(hgrid, "t")
-    tlon = ds_t.tlon
     ds_q = get_hgrid_arakawa_c_points(hgrid, "q")
-    qlon = ds_q.qlon
-    qlat = ds_q.qlat
-    angles_arr = np.zeros((len(tlon.nyp), len(tlon.nxp)))
 
-    # Compute lonB for all points
-    lonB = np.zeros((2, 2, len(tlon.nyp), len(tlon.nxp)))
-
-    # Vectorized computation of lonB
-    for n in np.arange(0, 2):
-        for m in np.arange(0, 2):
-            lonB[m, n] = modulo_around_point(
-                qlon[
-                    np.arange(m, (m - 1 + len(qlon.nyp))),
-                    np.arange(n, (n - 1 + len(qlon.nxp))),
-                ],
-                tlon,
-                len_lon,
-            )
-
-    # Compute lon_scale
-    lon_scale = np.cos(
-        pi_720deg
-        * ((qlat[0:-1, 0:-1] + qlat[1:, 1:]) + (qlat[1:, 0:-1] + qlat[0:-1, 1:]))
+    # Reformat into x, y comps
+    t_points = xr.Dataset(
+        {
+            "x": (("nyp", "nxp"), ds_t.tlon.data),
+            "y": (("nyp", "nxp"), ds_t.tlat.data),
+        }
+    )
+    q_points = xr.Dataset(
+        {
+            "x": (("nyp", "nxp"), ds_q.qlon.data),
+            "y": (("nyp", "nxp"), ds_q.qlat.data),
+        }
     )
 
-    # Compute angle
-    angle = np.arctan2(
-        lon_scale * ((lonB[0, 1] - lonB[1, 0]) + (lonB[1, 1] - lonB[0, 0])),
-        (qlat[:-1, :-1] - qlat[1:, 1:]) + (qlat[1:, 0:-1] - qlat[0:-1, 1:]),
+    return mom6_angle_calculation_method(
+        hgrid.x.max() - hgrid.x.min(),
+        q_points.isel(nyp=slice(1, None), nxp=slice(0, -1)),
+        q_points.isel(nyp=slice(1, None), nxp=slice(1, None)),
+        q_points.isel(nyp=slice(0, -1), nxp=slice(0, -1)),
+        q_points.isel(nyp=slice(0, -1), nxp=slice(1, None)),
+        t_points,
     )
-    # Assign angle to angles_arr
-    angles_arr = np.rad2deg(angle) - 90
-
-    # Assign angles_arr to hgrid
-    t_angles = xr.DataArray(
-        angles_arr,
-        dims=["nyp", "nxp"],
-        coords={
-            "nyp": tlon.nyp.values,
-            "nxp": tlon.nxp.values,
-        },
-    )
-    return t_angles
 
 
 def get_hgrid_arakawa_c_points(hgrid: xr.Dataset, point_type="t") -> xr.Dataset:
@@ -650,83 +710,3 @@ def create_pseudo_hgrid(hgrid: xr.Dataset) -> xr.Dataset:
         }
     )
     return pseudo_hgrid
-
-
-def initialize_hgrid_rotation_angles_using_pseudo_hgrid(
-    hgrid: xr.Dataset,
-) -> xr.Dataset:
-    """
-    Calculate the angle_dx in degrees from the true x (east?) direction counterclockwise) and return as dataarray
-
-    Parameters
-    ----------
-    hgrid: xr.Dataset
-        The hgrid dataset
-    pseudo_hgrid: xr.Dataset
-        The pseudo hgrid dataset
-    Returns
-    -------
-    xr.DataArray
-        The t-point angles
-    """
-    # Get Fred Pseudo grid
-    pseudo_hgrid = create_pseudo_hgrid(hgrid)
-
-    # Direct Translation
-    pi_720deg = (
-        np.arctan(1) / 180
-    )  # One quarter the conversion factor from degrees to radians
-
-    ## Check length of longitude
-    G_len_lon = (
-        pseudo_hgrid.x.max() - pseudo_hgrid.x.min()
-    )  # We're always going to be working with the regional case.... in the global case len_lon is different, and is a check in the actual MOM code.
-    len_lon = G_len_lon
-
-    angles_arr = np.zeros((len(hgrid.nyp), len(hgrid.nxp)))
-
-    # Compute lonB for all points
-    lonB = np.zeros((2, 2, len(hgrid.nyp), len(hgrid.nxp)))
-
-    # Vectorized computation of lonB
-    lonB[0][0] = modulo_around_point(
-        pseudo_hgrid.x[:-2, :-2], hgrid.x, len_lon
-    )  # Bottom Left
-    lonB[1][0] = modulo_around_point(
-        pseudo_hgrid.x[2:, :-2], hgrid.x, len_lon
-    )  # Top Left
-    lonB[1][1] = modulo_around_point(
-        pseudo_hgrid.x[2:, 2:], hgrid.x, len_lon
-    )  # Top Right
-    lonB[0][1] = modulo_around_point(
-        pseudo_hgrid.x[:-2, 2:], hgrid.x, len_lon
-    )  # Bottom Right
-
-    # Compute lon_scale
-    lon_scale = np.cos(
-        pi_720deg
-        * (
-            (pseudo_hgrid.y[:-2, :-2] + pseudo_hgrid.y[:-2, 2:])
-            + (pseudo_hgrid.y[2:, 2:] + pseudo_hgrid.y[2:, :-2])
-        )
-    )
-
-    # Compute angle
-    angle = np.arctan2(
-        lon_scale * ((lonB[0, 1] - lonB[1, 0]) + (lonB[1, 1] - lonB[0, 0])),
-        (pseudo_hgrid.y[:-2, :-2] - pseudo_hgrid.y[2:, 2:])
-        + (pseudo_hgrid.y[2:, :-2] - pseudo_hgrid.y[:-2, 2:]),
-    )
-    # Assign angle to angles_arr
-    angles_arr = np.rad2deg(angle) - 90
-
-    # Assign angles_arr to hgrid
-    t_angles = xr.DataArray(
-        angles_arr,
-        dims=["nyp", "nxp"],
-        coords={
-            "nyp": hgrid.nyp.values,
-            "nxp": hgrid.nxp.values,
-        },
-    )
-    return t_angles
