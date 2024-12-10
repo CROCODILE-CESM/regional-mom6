@@ -3017,9 +3017,7 @@ class segment:
                     ds, "rotated_v", coords, "", to_beginning=True
                 )
 
-                regridder_keith = rgd.create_regridder(
-                    ds, coords, ".temp", method="nearest_s2d"
-                )
+                regridder_keith = rgd.create_regridder(ds, coords, method="nearest_s2d")
 
                 rotated_u = regridder_keith(ds["rotated_u"])
                 rotated_v = regridder_keith(ds["rotated_v"])
@@ -3124,9 +3122,7 @@ class segment:
                     ds, "rotated_v", coords, "", to_beginning=True
                 )
 
-                regridder_keith = rgd.create_regridder(
-                    ds, coords, ".temp", method="nearest_s2d"
-                )
+                regridder_keith = rgd.create_regridder(ds, coords, method="nearest_s2d")
                 velocities_out["u"] = regridder_keith(ds["rotated_u"])
                 velocities_out["v"] = regridder_keith(ds["rotated_v"])
 
@@ -3242,9 +3238,7 @@ class segment:
                     ds, "rotated_v", coords, "", to_beginning=True
                 )
 
-                regridder_keith = rgd.create_regridder(
-                    ds, coords, ".temp", method="nearest_s2d"
-                )
+                regridder_keith = rgd.create_regridder(ds, coords, method="nearest_s2d")
                 rotated_u = regridder_keith(ds["rotated_u"])
                 rotated_v = regridder_keith(ds["rotated_v"])
 
@@ -3480,8 +3474,8 @@ class segment:
                 self.hgrid, self.orientation, self.segment_name, coords_at_t_points=True
             )
 
-        regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords, ".temp")
-        regrid_v = rgd.create_regridder(tpxo_v[["lon", "lat", "vRe"]], coords, ".temp2")
+        regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords)
+        regrid_v = rgd.create_regridder(tpxo_v[["lon", "lat", "vRe"]], coords)
 
         # Interpolate each real and imaginary parts to self.
         uredest = regrid_u(tpxo_u[["lon", "lat", "uRe"]])["uRe"]
@@ -3568,7 +3562,7 @@ class segment:
             rgd.add_secondary_dimension(ds, "up", coords, "", to_beginning=True)
             rgd.add_secondary_dimension(ds, "vp", coords, "", to_beginning=True)
 
-            regridder = rgd.create_regridder(ds, coords, ".temp", method="nearest_s2d")
+            regridder = rgd.create_regridder(ds, coords, method="nearest_s2d")
 
             ua = regridder(ds["ua"])
             va = regridder(ds["va"])

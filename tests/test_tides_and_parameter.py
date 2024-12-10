@@ -13,6 +13,9 @@ import shutil
 import importlib
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+# @pytest.mark.skipif(
+#     IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions."
+# )
 
 
 @pytest.fixture(scope="module")
@@ -153,140 +156,121 @@ def dummy_bathymetry_data():
     return bathymetry
 
 
-class TestAll:
-    @classmethod
-    def setup_class(self):  # tmp_path is a pytest fixture
-        expt_name = "testing"
-        ## User-1st, test if we can even read the angled nc files.
-        self.dump_files_dir = Path("testing_outputs")
-        os.makedirs(self.dump_files_dir, exist_ok=True)
-        self.expt = rmom6.experiment.create_empty(
-            expt_name=expt_name,
-            mom_input_dir=self.dump_files_dir,
-            mom_run_dir=self.dump_files_dir,
+@pytest.fixture(scope="module")
+def full_expt_setup(dummy_bathymetry_data):
+
+    expt_name = "testing"
+
+    latitude_extent = [16.0, 27]
+    longitude_extent = [192, 209]
+
+    date_range = ["2005-01-01 00:00:00", "2005-02-01 00:00:00"]
+
+    ## Place where all your input files go
+    input_dir = Path(
+        os.path.join(
+            expt_name,
+            "inputs",
         )
+    )
 
-    @classmethod
-    def teardown_class(cls):
-        shutil.rmtree(cls.dump_files_dir)
-
-    @pytest.fixture(scope="module")
-    def full_legit_expt_setup(self, dummy_bathymetry_data):
-
-        expt_name = "testing"
-
-        latitude_extent = [16.0, 27]
-        longitude_extent = [192, 209]
-
-        date_range = ["2005-01-01 00:00:00", "2005-02-01 00:00:00"]
-
-        ## Place where all your input files go
-        input_dir = Path(
-            os.path.join(
-                expt_name,
-                "inputs",
-            )
+    ## Directory where you'll run the experiment from
+    run_dir = Path(
+        os.path.join(
+            expt_name,
+            "run_files",
         )
+    )
+    data_path = Path("data")
+    for path in (run_dir, input_dir, data_path):
+        os.makedirs(str(path), exist_ok=True)
+    bathy_path = data_path / "bathymetry.nc"
+    bathymetry = dummy_bathymetry_data
+    bathymetry.to_netcdf(bathy_path)
+    ## User-1st, test if we can even read the angled nc files.
+    expt = rmom6.experiment(
+        longitude_extent=longitude_extent,
+        latitude_extent=latitude_extent,
+        date_range=date_range,
+        resolution=0.05,
+        number_vertical_layers=75,
+        layer_thickness_ratio=10,
+        depth=4500,
+        minimum_depth=5,
+        mom_run_dir=run_dir,
+        mom_input_dir=input_dir,
+        toolpath_dir="",
+    )
+    return expt
 
-        ## Directory where you'll run the experiment from
-        run_dir = Path(
-            os.path.join(
-                expt_name,
-                "run_files",
-            )
+
+def test_full_expt_setup(full_expt_setup):
+    assert str(full_expt_setup)
+
+
+def test_tides(dummy_tidal_data, tmp_path):
+    """
+    Test the main setup tides function!
+    """
+    expt_name = "testing"
+
+    expt = rmom6.experiment.create_empty(
+        expt_name=expt_name,
+        mom_input_dir=tmp_path,
+        mom_run_dir=tmp_path,
+    )
+    # Generate Fake Tidal Data
+    ds_h, ds_u = dummy_tidal_data
+
+    # Save to Fake Folder
+    ds_h.to_netcdf(tmp_path / "h_fake_tidal_data.nc")
+    ds_u.to_netcdf(tmp_path / "u_fake_tidal_data.nc")
+
+    # Set other required variables needed in setup_tides
+
+    # Lat Long
+    expt.longitude_extent = (-5, 5)
+    expt.latitude_extent = (0, 30)
+    # Grid Type
+    expt.hgrid_type = "even_spacing"
+    # Dates
+    expt.date_range = ("2000-01-01", "2000-01-02")
+    expt.segments = {}
+    # Generate Hgrid Data
+    expt.resolution = 0.1
+    expt.hgrid = expt._make_hgrid()
+    # Create Forcing Folder
+    os.makedirs(tmp_path / "forcing", exist_ok=True)
+
+    expt.setup_boundary_tides(
+        tmp_path / "h_fake_tidal_data.nc",
+        tmp_path / "u_fake_tidal_data.nc",
+    )
+
+
+def test_change_MOM_parameter(tmp_path):
+    """
+    Test the change MOM parameter function, as well as read_MOM_file and write_MOM_file under the hood.
+    """
+    expt_name = "testing"
+
+    expt = rmom6.experiment.create_empty(
+        expt_name=expt_name,
+        mom_input_dir=tmp_path,
+        mom_run_dir=tmp_path,
+    )
+    # Copy over the MOM Files to the dump_files_dir
+    base_run_dir = Path(
+        os.path.join(
+            importlib.resources.files("regional_mom6").parent,
+            "demos",
+            "premade_run_directories",
         )
-        data_path = Path("data")
-        for path in (run_dir, input_dir, data_path):
-            os.makedirs(str(path), exist_ok=True)
-        bathy_path = data_path / "bathymetry.nc"
-        bathymetry = dummy_bathymetry_data
-        bathymetry.to_netcdf(bathy_path)
-        self.glorys_path = bathy_path
-        ## User-1st, test if we can even read the angled nc files.
-        expt = rmom6.experiment(
-            longitude_extent=longitude_extent,
-            latitude_extent=latitude_extent,
-            date_range=date_range,
-            resolution=0.05,
-            number_vertical_layers=75,
-            layer_thickness_ratio=10,
-            depth=4500,
-            minimum_depth=5,
-            mom_run_dir=run_dir,
-            mom_input_dir=input_dir,
-            toolpath_dir="",
-        )
-        return expt
-
-    def test_full_legit_expt_setup(self, full_legit_expt_setup):
-        assert str(full_legit_expt_setup)
-
-    # @pytest.mark.skipif(
-    #     IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions."
-    # )
-    def test_tides(self, dummy_tidal_data):
-        """
-        Test the main setup tides function!
-        """
-
-        # Generate Fake Tidal Data
-        ds_h, ds_u = dummy_tidal_data
-
-        # Save to Fake Folder
-        ds_h.to_netcdf(self.dump_files_dir / "h_fake_tidal_data.nc")
-        ds_u.to_netcdf(self.dump_files_dir / "u_fake_tidal_data.nc")
-
-        # Set other required variables needed in setup_tides
-
-        # Lat Long
-        self.expt.longitude_extent = (-5, 5)
-        self.expt.latitude_extent = (0, 30)
-        # Grid Type
-        self.expt.hgrid_type = "even_spacing"
-        # Dates
-        self.expt.date_range = ("2000-01-01", "2000-01-02")
-        self.expt.segments = {}
-        # Generate Hgrid Data
-        self.expt.resolution = 0.1
-        self.expt.hgrid = self.expt._make_hgrid()
-        # Create Forcing Folder
-        os.makedirs(self.dump_files_dir / "forcing", exist_ok=True)
-
-        self.expt.setup_boundary_tides(
-            self.dump_files_dir / "h_fake_tidal_data.nc",
-            self.dump_files_dir / "u_fake_tidal_data.nc",
-        )
-
-    def test_change_MOM_parameter(self):
-        """
-        Test the change MOM parameter function, as well as read_MOM_file and write_MOM_file under the hood.
-        """
-
-        # Copy over the MOM Files to the dump_files_dir
-        base_run_dir = Path(
-            os.path.join(
-                importlib.resources.files("regional_mom6").parent,
-                "demos",
-                "premade_run_directories",
-            )
-        )
-        shutil.copytree(
-            base_run_dir / "common_files", self.expt.mom_run_dir, dirs_exist_ok=True
-        )
-        MOM_override_dict = self.expt.read_MOM_file_as_dict("MOM_override")
-        og = self.expt.change_MOM_parameter("DT", "30", "COOL COMMENT")
-        MOM_override_dict_new = self.expt.read_MOM_file_as_dict("MOM_override")
-        assert MOM_override_dict_new["DT"]["value"] == "30"
-        assert MOM_override_dict["DT"]["value"] == og
-        assert MOM_override_dict_new["DT"]["comment"] == "COOL COMMENT\n"
-
-    def test_properties_empty(self):
-        """
-        Test the properties
-        """
-        dss = self.expt.era5
-        dss_2 = self.expt.tides_boundaries
-        dss_3 = self.expt.ocean_state_boundaries
-        dss_4 = self.expt.initial_condition
-        dss_5 = self.expt.bathymetry_property
-        print(dss, dss_2, dss_3, dss_4, dss_5)
+    )
+    shutil.copytree(base_run_dir / "common_files", expt.mom_run_dir, dirs_exist_ok=True)
+    MOM_override_dict = expt.read_MOM_file_as_dict("MOM_override")
+    og = expt.change_MOM_parameter("DT", "30", "COOL COMMENT")
+    MOM_override_dict_new = expt.read_MOM_file_as_dict("MOM_override")
+    assert MOM_override_dict_new["DT"]["value"] == "30"
+    assert MOM_override_dict["DT"]["value"] == og
+    assert MOM_override_dict_new["DT"]["comment"] == "COOL COMMENT\n"
