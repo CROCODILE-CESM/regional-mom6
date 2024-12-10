@@ -1,21 +1,48 @@
-# MOM6 Angle Calculation Steps 
+# Rotation and angle calculation in RM6 using MOM6 Angle Calculation  
+This document explains the process by which Regional MOM6 calculates the angle of curved hgrids. MOM6 doesn't actually use the user-provided "angle_dx" field in input hgrids, but internally calculates the angle. To accomodate this fact when we rotate our boundary conditions, we implemented MOM6 angle calculation in a file called "rotation.py", and adjusted functions where we regrid the boundary conditions.
 
-## Process of calculation -> Only works on t-points
+
+## MOM6 process of angle calculation (T-point only)
 1. Calculate pi/4rads / 180 degress  = Gives a 1/4 conversion of degrees to radians. I.E. multiplying an angle in degrees by this gives the conversion to radians at 1/4 the value. 
 2. Figure out the longitudunal extent of our domain, or periodic range of longitudes. For global cases it is len_lon = 360, for our regional cases it is given by the hgrid.
-3. At each point on our hgrid, we find the point to the left, bottom left diag, bottom, and itself. We adjust each of these longitudes to be in the range of len_lon around the point itself. (module_around_point)
+3. At each point on our hgrid, we find the q-point to the top left, bottom left, bottom right, top right. We adjust each of these longitudes to be in the range of len_lon around the point itself. (module_around_point)
 4. We then find the lon_scale, which is the "trigonometric scaling factor converting changes in longitude to equivalent distances in latitudes". Whatever that actually means is we add the latitude of all four of these points from part 3 and basically average it and convert to radians. We then take the cosine of it. As I understand it, it's a conversion of longitude to equivalent latitude distance. 
 5. Then we calculate the angle. This is a simple arctan2 so y/x. 
-    1. The "y" component is the addition of the difference between the diagonals in longitude of lonB multiplied by the lon_scale, which is our conversion to latitude.
+    1. The "y" component is the addition of the difference between the diagonals in longitude (adjusted by modulo_around_point in step 3) multiplied by the lon_scale, which is our conversion to latitude.
     2. The "x" component is the same addition of differences in latitude.
     3. Thus, given the same units, we can call arctan to get the angle in degrees
 
-## Conversion to Q points
-1. (Recommended by Gustavo)
-2. We use XGCM to interpolate from the t-points to all other points in the supergrid.
+
+## Problem
+MOM6 only calculates the angle at t-points. For boundary rotation, we need the angle at the boundary, which is q/u/v points. Because we need the points to the left, right, top, and bottom of the point, this method won't work for the boundary.
+
+
+# Convert this method to boundary angles - 3 Options
+1. **GIVEN_ANGLE**: Don't calculate the angle and use the user-provided field in the hgrid called "angle_dx"
+2. **FRED_AVERAGE**: Calculate another boundary row/column points around the hgrid using simple difference techniques. Use the new points to calculate the angle at the boundaries. This works because we can now access the four points needed to calculate the angle, where previously at boundaries we would be missing at least two. 
+3. **KEITH_DOUBLE_REGRIDDING**: Regrid the boundary conditions to the t-points. Rotate using the MOM6 angle calculation. Regrid to the boundary.
+
 
 ## Implementation
 
-1. Direct implementation of MOM6 grid angle initalization function (and modulo_around_point)
-2. Wrap direct implementation combined with XGCM interpolation for grid angles
+Most calculation code is implemented in the rotation.py script, and the functional uses are in regrid_velocity_tracers and regrid_tides functions in the segment class of RM6.
+
+
+### Calculation Code (rotation.py)
+1. **Rotational Method Definition**:  Rotational Methods are defined in the enum class "Rotational Method" in rotation.py.
+2. **MOM6 Angle Calculation**: The method is implemented in "mom6_angle_calculation_method" in rotation.py and the direct t-point angle calculation is "initialize_grid_rotation_angle". 
+3. **Fred's Pseudo Grid Averaging**: The method to add the additional boundary row/columns is referenced in "pseudo_hgrid" functions in rotation.py
+4. **Keith's Double Regridding**: Keith's double regridding makes use of the "initialize_grid_rotation_angle" function in rotation.py.
+
+### Implementation Code (regional_mom6.py)
+Both regridding functions (regrid_velocity_tracers, regrid_tides) accept a parameter called "rotational_method" which takes the Enum class defining the rotational method.
+
+We then define each method with a bunch of if statements. Here are the processes:
+
+1. Given angle is the default method of accepting the hgrid's angle_dx
+2. Fred's method is the least code, and we simply swap out the hgrid angle with the generated one we calculate right where we do the rotation.
+3. Keith's method is where we actually do a bit more:
+    1. We change the call to "coords" to get the t-points so that the initial regridding is to the t_points intead of the boundary
+    2. We then rotate it using a similar method to Fred's of regenerating the angle right where we do the rotation
+    3. Then we have to regrid the result to the actual boundary. Because (by definition) it is a curvilinear grid, we have to restructure the dataset to include an extra dimension so that xesmf plays nicely, then regrid the whole thing to the boundary. It adds a decent amount of code I guess.
 

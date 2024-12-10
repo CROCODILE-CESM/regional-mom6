@@ -3006,25 +3006,21 @@ class segment:
                 coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
                 ds = xr.Dataset()
-
-                expanded_lat = np.tile(rotated_u.lat, (1, 1))
-                expanded_lon = np.tile(rotated_u.lon, (1, 1))
-                ds["lat"] = xr.DataArray(expanded_lat, dims=("y", "x"))
-                ds["lon"] = xr.DataArray(expanded_lon, dims=("y", "x"))
-
-                exp_rotated_u = [rotated_u]
-                ds["rotated_u"] = xr.DataArray(
-                    exp_rotated_u, dims=("y", "time", "depth", "x")
+                ds["rotated_u"] = rotated_u
+                ds["rotated_v"] = rotated_v
+                rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
+                rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
+                rgd.add_secondary_dimension(
+                    ds, "rotated_u", coords, "", to_beginning=True
                 )
-
-                exp_rotated_v = [rotated_v]
-                ds["rotated_v"] = xr.DataArray(
-                    exp_rotated_v, dims=("y", "time", "depth", "x")
+                rgd.add_secondary_dimension(
+                    ds, "rotated_v", coords, "", to_beginning=True
                 )
 
                 regridder_keith = rgd.create_regridder(
                     ds, coords, ".temp", method="nearest_s2d"
                 )
+
                 rotated_u = regridder_keith(ds["rotated_u"])
                 rotated_v = regridder_keith(ds["rotated_v"])
 
@@ -3116,20 +3112,16 @@ class segment:
                 coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
                 ds = xr.Dataset()
+                ds["rotated_u"] = velocities_out["u"]
+                ds["rotated_v"] = velocities_out["v"]
 
-                expanded_lat = np.tile(velocities_out["u"].lat, (1, 1))
-                expanded_lon = np.tile(velocities_out["u"].lon, (1, 1))
-                ds["lat"] = xr.DataArray(expanded_lat, dims=("y", "x"))
-                ds["lon"] = xr.DataArray(expanded_lon, dims=("y", "x"))
-
-                exp_rotated_u = [velocities_out["u"]]
-                ds["rotated_u"] = xr.DataArray(
-                    exp_rotated_u, dims=("y", "time", "depth", "x")
+                rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
+                rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
+                rgd.add_secondary_dimension(
+                    ds, "rotated_u", coords, "", to_beginning=True
                 )
-
-                exp_rotated_v = [velocities_out["v"]]
-                ds["rotated_v"] = xr.DataArray(
-                    exp_rotated_v, dims=("y", "time", "depth", "x")
+                rgd.add_secondary_dimension(
+                    ds, "rotated_v", coords, "", to_beginning=True
                 )
 
                 regridder_keith = rgd.create_regridder(
@@ -3238,20 +3230,16 @@ class segment:
 
                 coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
                 ds = xr.Dataset()
+                ds["rotated_u"] = rotated_u
+                ds["rotated_v"] = rotated_v
 
-                expanded_lat = np.tile(rotated_u.lat, (1, 1))
-                expanded_lon = np.tile(rotated_u.lon, (1, 1))
-                ds["lat"] = xr.DataArray(expanded_lat, dims=("y", "x"))
-                ds["lon"] = xr.DataArray(expanded_lon, dims=("y", "x"))
-
-                exp_rotated_u = [rotated_u]
-                ds["rotated_u"] = xr.DataArray(
-                    exp_rotated_u, dims=("y", "time", "depth", "x")
+                rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
+                rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
+                rgd.add_secondary_dimension(
+                    ds, "rotated_u", coords, "", to_beginning=True
                 )
-
-                exp_rotated_v = [rotated_v]
-                ds["rotated_v"] = xr.DataArray(
-                    exp_rotated_v, dims=("y", "time", "depth", "x")
+                rgd.add_secondary_dimension(
+                    ds, "rotated_v", coords, "", to_beginning=True
                 )
 
                 regridder_keith = rgd.create_regridder(
@@ -3561,22 +3549,24 @@ class segment:
 
             ## Reorganize regridding into 2D
             ds = xr.Dataset()
-            expanded_lat = np.tile(ua.lat, (1, 1))
-            expanded_lon = np.tile(ua.lon, (1, 1))
-            ds["lat"] = xr.DataArray(expanded_lat, dims=("y", "x"))
-            ds["lon"] = xr.DataArray(expanded_lon, dims=("y", "x"))
 
-            exp_ua = [ua]
-            ds["ua"] = xr.DataArray(exp_ua, dims=("y", "constituent", "x"))
+            ds["ua"] = ua
+            ds["va"] = va
+            ds["vp"] = (
+                ["constituent", coords.attrs["parallel"] + "_" + self.segment_name],
+                vp,
+            )
+            ds["up"] = (
+                ["constituent", coords.attrs["parallel"] + "_" + self.segment_name],
+                up,
+            )
 
-            exp_va = [va]
-            ds["va"] = xr.DataArray(exp_va, dims=("y", "constituent", "x"))
-
-            exp_vp = [vp]
-            ds["vp"] = xr.DataArray(exp_vp, dims=("y", "constituent", "x"))
-
-            exp_up = [up]
-            ds["up"] = xr.DataArray(exp_up, dims=("y", "constituent", "x"))
+            rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
+            rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
+            rgd.add_secondary_dimension(ds, "ua", coords, "", to_beginning=True)
+            rgd.add_secondary_dimension(ds, "va", coords, "", to_beginning=True)
+            rgd.add_secondary_dimension(ds, "up", coords, "", to_beginning=True)
+            rgd.add_secondary_dimension(ds, "vp", coords, "", to_beginning=True)
 
             regridder = rgd.create_regridder(ds, coords, ".temp", method="nearest_s2d")
 

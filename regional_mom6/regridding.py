@@ -314,7 +314,7 @@ def generate_dz(ds: xr.Dataset, z_dim_name: str) -> xr.Dataset:
 
 
 def add_secondary_dimension(
-    ds: xr.Dataset, var: str, coords, segment_name: str
+    ds: xr.Dataset, var: str, coords, segment_name: str, to_beginning=False
 ) -> xr.Dataset:
     """Add the perpendiciular dimension to the dataset, even if it's like one val. It's required.
     Parameters
@@ -327,6 +327,8 @@ def add_secondary_dimension(
         The coordinates from the function coords...
     segment_name : str
         The segment name
+    to_beginning : bool, optional
+        Whether to add the perpendicular dimension to the beginning or to the selected position, by default False
     Returns
     -------
     xr.Dataset
@@ -342,12 +344,20 @@ def add_secondary_dimension(
         "Checking if nz or constituent is in dimensions, then we have to bump the perpendicular dimension up by one"
     )
     insert_behind_by = 0
-    if any(coord.startswith("nz") or coord == "constituent" for coord in ds[var].dims):
-        regridding_logger.debug("Bump it by one")
-        insert_behind_by = 0
+    if not to_beginning:
+
+        if any(
+            coord.startswith("nz") or coord == "constituent" for coord in ds[var].dims
+        ):
+            regridding_logger.debug("Bump it by one")
+            insert_behind_by = 0
+        else:
+            # Missing vertical dim or tidal coord means we don't need to offset the perpendicular
+            insert_behind_by = 1
     else:
-        # Missing vertical dim or tidal coord means we don't need to offset the perpendicular
-        insert_behind_by = 1
+        insert_behind_by = coords.attrs[
+            "axis_to_expand"
+        ]  # Just magic to add dim to the beginning
 
     regridding_logger.debug(f"Expand dimensions")
     ds[var] = ds[var].expand_dims(
