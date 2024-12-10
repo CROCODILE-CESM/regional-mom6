@@ -93,6 +93,7 @@ The bibtex entry for the paper is:
    mom6-file-structure-primer
    api
    contributing
+   angle_calc
    
 
 Indices and tables
