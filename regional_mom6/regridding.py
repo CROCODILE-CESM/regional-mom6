@@ -56,7 +56,11 @@ regridding_logger = setup_logger(__name__)
 
 
 def coords(
-    hgrid: xr.Dataset, orientation: str, segment_name: str, coords_at_t_points=False
+    hgrid: xr.Dataset,
+    orientation: str,
+    segment_name: str,
+    coords_at_t_points=False,
+    angle_variable_name="angle_dx",
 ) -> xr.Dataset:
     """
     This function:
@@ -88,13 +92,13 @@ def coords(
         # Calc T Point Info
         ds = get_hgrid_arakawa_c_points(hgrid, "t")
 
-        tangle_dx = hgrid["angle_dx"][(ds.t_points_y, ds.t_points_x)]
+        tangle_dx = hgrid[angle_variable_name][(ds.t_points_y, ds.t_points_x)]
         # Assign to dataset
         dataset_to_get_coords = xr.Dataset(
             {
                 "x": ds.tlon,
                 "y": ds.tlat,
-                "angle_dx": (("nyp", "nxp"), tangle_dx.values),
+                angle_variable_name: (("nyp", "nxp"), tangle_dx.values),
             },
             coords={"nyp": ds.nyp, "nxp": ds.nxp},
         )
@@ -109,7 +113,7 @@ def coords(
             {
                 "lon": dataset_to_get_coords["x"].isel(nyp=0),
                 "lat": dataset_to_get_coords["y"].isel(nyp=0),
-                "angle": dataset_to_get_coords["angle_dx"].isel(nyp=0),
+                "angle": dataset_to_get_coords[angle_variable_name].isel(nyp=0),
             }
         )
         rcoord = rcoord.rename_dims({"nxp": f"nx_{segment_name}"})
@@ -123,7 +127,7 @@ def coords(
             {
                 "lon": dataset_to_get_coords["x"].isel(nyp=-1),
                 "lat": dataset_to_get_coords["y"].isel(nyp=-1),
-                "angle": dataset_to_get_coords["angle_dx"].isel(nyp=-1),
+                "angle": dataset_to_get_coords[angle_variable_name].isel(nyp=-1),
             }
         )
         rcoord = rcoord.rename_dims({"nxp": f"nx_{segment_name}"})
@@ -135,7 +139,7 @@ def coords(
             {
                 "lon": dataset_to_get_coords["x"].isel(nxp=0),
                 "lat": dataset_to_get_coords["y"].isel(nxp=0),
-                "angle": dataset_to_get_coords["angle_dx"].isel(nxp=0),
+                "angle": dataset_to_get_coords[angle_variable_name].isel(nxp=0),
             }
         )
         rcoord = rcoord.rename_dims({"nyp": f"ny_{segment_name}"})
@@ -147,7 +151,7 @@ def coords(
             {
                 "lon": dataset_to_get_coords["x"].isel(nxp=-1),
                 "lat": dataset_to_get_coords["y"].isel(nxp=-1),
-                "angle": dataset_to_get_coords["angle_dx"].isel(nxp=-1),
+                "angle": dataset_to_get_coords[angle_variable_name].isel(nxp=-1),
             }
         )
         rcoord = rcoord.rename_dims({"nyp": f"ny_{segment_name}"})

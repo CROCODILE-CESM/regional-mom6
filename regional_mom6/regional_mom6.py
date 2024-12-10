@@ -593,6 +593,7 @@ class experiment:
         tidal_constituents=["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MM", "MF"],
         expt_name=None,
         boundaries=["south", "north", "west", "east"],
+        rotational_method=rgd.RotationMethod.GIVEN_ANGLE,
     ):
         """
         Substitute init method to creates an empty expirement object, with the opportunity to override whatever values wanted.
@@ -614,6 +615,7 @@ class experiment:
             repeat_year_forcing=None,
             tidal_constituents=None,
             expt_name=None,
+            rotational_method=None,
         )
 
         expt.expt_name = expt_name
@@ -635,6 +637,7 @@ class experiment:
         expt.layout = None
         self.segments = {}
         self.boundaries = boundaries
+        self.rotational_method = rotational_method
         return expt
 
     def __init__(
@@ -658,6 +661,7 @@ class experiment:
         create_empty=False,
         expt_name=None,
         boundaries=["south", "north", "west", "east"],
+        rotational_method=rgd.RotationMethod.GIVEN_ANGLE,
     ):
 
         # Creates empty experiment object for testing and experienced user manipulation.
@@ -694,7 +698,7 @@ class experiment:
         self.layout = None  # This should be a tuple. Leaving in a dummy 'None' makes it easy to remind the user to provide a value later on.
         self.minimum_depth = minimum_depth  # Minimum depth allowed in bathy file
         self.tidal_constituents = tidal_constituents
-
+        self.rotational_method = rotational_method
         if hgrid_type == "from_file":
             try:
                 self.hgrid = xr.open_dataset(self.mom_input_dir / "hgrid.nc")
@@ -1542,6 +1546,7 @@ class experiment:
         varnames,
         arakawa_grid="A",
         boundary_type="rectangular",
+        rotational_method=rgd.RotationMethod.GIVEN_ANGLE,
     ):
         """
         This function is a wrapper for `simple_boundary`. Given a list of up to four cardinal directions,
@@ -1592,6 +1597,7 @@ class experiment:
                     orientation
                 ),  # A number to identify the boundary; indexes from 1
                 arakawa_grid=arakawa_grid,
+                rotational_method=rotational_method,
             )
 
     def setup_single_boundary(
@@ -1602,6 +1608,7 @@ class experiment:
         segment_number,
         arakawa_grid="A",
         boundary_type="simple",
+        rotational_method=rgd.RotationMethod.GIVEN_ANGLE,
     ):
         """
         Here 'simple' refers to boundaries that are parallel to lines of constant longitude or latitude.
@@ -1642,7 +1649,9 @@ class experiment:
             repeat_year_forcing=self.repeat_year_forcing,
         )
 
-        self.segments[orientation].regrid_velocity_tracers()
+        self.segments[orientation].regrid_velocity_tracers(
+            rotational_method=rotational_method
+        )
 
         print("Done.")
         return
@@ -1653,6 +1662,7 @@ class experiment:
         tpxo_velocity_filepath,
         tidal_constituents="read_from_expt_init",
         boundary_type="rectangle",
+        rotational_method=rgd.RotationMethod.GIVEN_ANGLE,
     ):
         """
         This function:
@@ -1749,7 +1759,9 @@ class experiment:
                 seg = self.segments[b]
 
             # Output and regrid tides
-            seg.regrid_tides(tpxo_v, tpxo_u, tpxo_h, times)
+            seg.regrid_tides(
+                tpxo_v, tpxo_u, tpxo_h, times, rotational_method=rotational_method
+            )
             print("Done")
 
     def setup_bathymetry(
@@ -3364,28 +3376,66 @@ class segment:
             angle = coords["angle"]  # Fred's grid is in degrees
             INC -= np.radians(angle.data[np.newaxis, :])
         elif rotational_method == rgd.RotationMethod.FRED_AVERAGE:
-            degree_angle = rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(
-                self.hgrid
+
+            self.hgrid["angle_dx_rm6"] = (
+                rgd.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
             )
+            breakpoint()
+            degree_angle = rgd.coords(
+                self.hgrid,
+                self.orientation,
+                self.segment_name,
+                angle_variable_name="angle_dx_rm6",
+            )["angle"]
             INC -= np.radians(degree_angle.data[np.newaxis, :])
         elif rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-            angle = rgd.initialize_grid_rotation_angle(self.hgrid)
+            ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
+            self.hgrid["angle_dx_rm6"] = xr.full_like(self.hgrid["angle_dx"], np.nan)
+            self.hgrid["angle_dx_rm6"][ds.t_points_y.values, ds.t_points_x.values] = (
+                rgd.initialize_grid_rotation_angle(self.hgrid)
+            )
+            angle = rgd.coords(
+                self.hgrid,
+                self.orientation,
+                self.segment_name,
+                coords_at_t_points=True,
+                angle_variable_name="angle_dx_rm6",
+            )["angle"]
             INC -= np.radians(angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
 
         # Regrid back to real boundary
         if rotational_method == rgd.RotationMethod.KEITH_DOUBLE_REGRIDDING:
             coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
-            ua_regrid = rgd.create_regridder(ua, coords, ".temp")
-            ua = ua_regrid(ua)
-            va_regrid = rgd.create_regridder(va, coords, ".temp")
-            va = va_regrid(va)
-            up_regrid = rgd.create_regridder(up, coords, ".temp")
-            up = up_regrid(up)
-            vp_regrid = rgd.create_regridder(vp, coords, ".temp")
-            vp = vp_regrid(vp)
+
+            ## Reorganize regridding into 2D
+            ds = xr.Dataset()
+            expanded_lat = np.tile(ua.lat, (1, 1))
+            expanded_lon = np.tile(ua.lon, (1, 1))
+            ds["lat"] = xr.DataArray(expanded_lat, dims=("y", "x"))
+            ds["lon"] = xr.DataArray(expanded_lon, dims=("y", "x"))
+
+            exp_ua = [ua]
+            ds["ua"] = xr.DataArray(exp_ua, dims=("y", "constituent", "x"))
+
+            exp_va = [va]
+            ds["va"] = xr.DataArray(exp_va, dims=("y", "constituent", "x"))
+
+            exp_vp = [vp]
+            ds["vp"] = xr.DataArray(exp_vp, dims=("y", "constituent", "x"))
+
+            exp_up = [up]
+            ds["up"] = xr.DataArray(exp_up, dims=("y", "constituent", "x"))
+
+            regridder = rgd.create_regridder(ds, coords, ".temp", method="nearest_s2d")
+
+            ua = regridder(ds["ua"])
+            va = regridder(ds["va"])
+            up = regridder(ds["up"]).data
+            vp = regridder(ds["vp"]).data
 
         # Convert to real amplitude and phase.
+
         ds_ap = xr.Dataset(
             {f"uamp_{self.segment_name}": ua, f"vamp_{self.segment_name}": va}
         )
