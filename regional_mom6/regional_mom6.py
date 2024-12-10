@@ -594,7 +594,6 @@ class experiment:
         tidal_constituents=["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MM", "MF"],
         expt_name=None,
         boundaries=["south", "north", "west", "east"],
-        rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
         Substitute init method to creates an empty expirement object, with the opportunity to override whatever values wanted.
@@ -616,7 +615,6 @@ class experiment:
             repeat_year_forcing=None,
             tidal_constituents=None,
             expt_name=None,
-            rotational_method=None,
         )
 
         expt.expt_name = expt_name
@@ -638,7 +636,6 @@ class experiment:
         expt.layout = None
         self.segments = {}
         self.boundaries = boundaries
-        self.rotational_method = rotational_method
         return expt
 
     def __init__(
@@ -662,7 +659,6 @@ class experiment:
         create_empty=False,
         expt_name=None,
         boundaries=["south", "north", "west", "east"],
-        rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
 
         # Creates empty experiment object for testing and experienced user manipulation.
@@ -699,7 +695,6 @@ class experiment:
         self.layout = None  # This should be a tuple. Leaving in a dummy 'None' makes it easy to remind the user to provide a value later on.
         self.minimum_depth = minimum_depth  # Minimum depth allowed in bathy file
         self.tidal_constituents = tidal_constituents
-        self.rotational_method = rotational_method
         if hgrid_type == "from_file":
             try:
                 self.hgrid = xr.open_dataset(self.mom_input_dir / "hgrid.nc")
