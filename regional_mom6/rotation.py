@@ -24,7 +24,7 @@ class RotationMethod(Enum):
     NO_ROTATION = 4
 
 
-def initialize_hgrid_rotation_angles_using_pseudo_hgrid(
+def initialize_grid_rotation_angles_using_pseudo_hgrid(
     hgrid: xr.Dataset,
 ) -> xr.Dataset:
     """

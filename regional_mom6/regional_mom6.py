@@ -2970,7 +2970,7 @@ class segment:
                 )
             elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
                 self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                    rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
                 )
                 degree_angle = rgd.coords(
                     self.hgrid,
@@ -3073,7 +3073,7 @@ class segment:
                 )
             elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
                 self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                    rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
                 )
                 degree_angle = rgd.coords(
                     self.hgrid,
@@ -3190,7 +3190,7 @@ class segment:
                 )
             elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
                 self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                    rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
                 )
                 degree_angle = rgd.coords(
                     self.hgrid,
@@ -3512,7 +3512,7 @@ class segment:
         elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
 
             self.hgrid["angle_dx_rm6"] = (
-                rot.initialize_hgrid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
             )
             degree_angle = rgd.coords(
                 self.hgrid,
