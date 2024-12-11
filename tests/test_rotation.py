@@ -45,8 +45,8 @@ def generate_curvilinear_grid(request):
             Dataset containing 'x' (longitude), 'y' (latitude), and 'angle' arrays with metadata.
         """
         # Generate logical grid
-        lon = np.zeroes((nyp, nxp))
-        lat = np.zeroes((nyp, nxp))
+        lon = np.zeros((nyp, nxp))
+        lat = np.zeros((nyp, nxp))
 
         lon[0][0] = lon_point
         lat[0][0] = lat_point
@@ -294,7 +294,10 @@ def test_initialize_grid_rotation_angle(generate_curvilinear_grid):
     hgrid = generate_curvilinear_grid([100, 110], [10, 20], 10)
     angle = rot.initialize_grid_rotation_angle(hgrid)
 
-    assert (angle.values == 10).all()
+    assert (angle.values == 10).all()  # Angle is correct
+    assert (
+        angle.values.shape == rgd.get_hgrid_arakawa_c_points(hgrid, "t").tlon.shape
+    )  # Shape is correct
     return
 
 
@@ -306,4 +309,5 @@ def test_initialize_grid_rotation_angle_using_pseudo_hgrid(generate_curvilinear_
     angle = rot.initialize_grid_rotation_angle_using_pseudo_hgrid(hgrid)
 
     assert (angle.values - hgrid.angle < 1).all()
+    assert angle.values.shape == hgrid.x.shape
     return

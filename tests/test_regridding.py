@@ -45,8 +45,8 @@ def generate_curvilinear_grid(request):
             Dataset containing 'x' (longitude), 'y' (latitude), and 'angle' arrays with metadata.
         """
         # Generate logical grid
-        lon = np.zeroes((nyp, nxp))
-        lat = np.zeroes((nyp, nxp))
+        lon = np.zeros((nyp, nxp))
+        lat = np.zeros((nyp, nxp))
 
         lon[0][0] = lon_point
         lat[0][0] = lat_point
