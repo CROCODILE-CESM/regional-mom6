@@ -1665,7 +1665,7 @@ class experiment:
 
         Args:
             path_to_td (str): Path to boundary tidal file.
-            tidal_filename: Name of the tpxo product that's used in the tidal\_filename. Should be h_tidal_filename, u_tidal_filename
+            tidal_filename: Name of the tpxo product that's used in the tidal_filename. Should be h_tidal_filename, u_tidal_filename
             tidal_constituents: List of tidal constituents to include in the regridding. Default is [0] which is the M2 constituent.
             boundary_type (str): Type of boundary. Currently, only rectangle is supported. Here rectangle refers to boundaries that are parallel to lines of constant longitude or latitude.
 
