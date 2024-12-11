@@ -3533,27 +3533,46 @@ class segment:
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
+
+        
         if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
-            angle = coords["angle"]  # Fred's grid is in degrees
+
+            # Get user-provided angle
+            angle = coords["angle"] 
+
+            # Rotate
             INC -= np.radians(angle.data[np.newaxis, :])
+
         elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
 
+            # Generate entire hgrid angles using pseudo_hgrid
             self.hgrid["angle_dx_rm6"] = (
                 rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
             )
+
+            # Get just boundary angles
             degree_angle = rgd.coords(
                 self.hgrid,
                 self.orientation,
                 self.segment_name,
                 angle_variable_name="angle_dx_rm6",
             )["angle"]
+
+            # Rotate
             INC -= np.radians(degree_angle.data[np.newaxis, :])
+
         elif rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+
+            # Get hgrid t_points
             ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
+
+            # Fill hgrid t_points with MOM6 angle calculation
             self.hgrid["angle_dx_rm6"] = xr.full_like(self.hgrid["angle_dx"], np.nan)
             self.hgrid["angle_dx_rm6"][ds.t_points_y.values, ds.t_points_x.values] = (
                 rot.initialize_grid_rotation_angle(self.hgrid)
             )
+
+            # Get boundary angles
             angle = rgd.coords(
                 self.hgrid,
                 self.orientation,
@@ -3561,14 +3580,18 @@ class segment:
                 coords_at_t_points=True,
                 angle_variable_name="angle_dx_rm6",
             )["angle"]
+
+            # Rotate
             INC -= np.radians(angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
 
         # Regrid back to real boundary
         if rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
+
+            # Get actual boundary instead of t_point boundary
             coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
-            ## Reorganize regridding into 2D
+            # Fill data into a 2D dataset b/c though the boundary is 1D, it is curvilinear by def of rotation.
             ds = xr.Dataset()
 
             ds["ua"] = ua
@@ -3582,6 +3605,7 @@ class segment:
                 up,
             )
 
+            # Add empty 1 value secondary dimension for regridding
             rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
             rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
             rgd.add_secondary_dimension(ds, "ua", coords, "", to_beginning=True)
@@ -3589,6 +3613,7 @@ class segment:
             rgd.add_secondary_dimension(ds, "up", coords, "", to_beginning=True)
             rgd.add_secondary_dimension(ds, "vp", coords, "", to_beginning=True)
 
+            # Regrid
             regridder = rgd.create_regridder(ds, coords, method="nearest_s2d")
 
             ua = regridder(ds["ua"])
