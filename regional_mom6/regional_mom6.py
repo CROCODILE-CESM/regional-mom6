@@ -2967,7 +2967,7 @@ class segment:
             if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
                 rotated_u, rotated_v = self.rotate(
                     regridded[self.u],
-                    regridded_v,
+                    regridded[self.v],
                     radian_angle=np.radians(coords.angle.values),
                 )
 
