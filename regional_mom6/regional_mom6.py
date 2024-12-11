@@ -3534,11 +3534,10 @@ class segment:
         # and convert ellipse back to amplitude and phase.
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
 
-        
         if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
 
             # Get user-provided angle
-            angle = coords["angle"] 
+            angle = coords["angle"]
 
             # Rotate
             INC -= np.radians(angle.data[np.newaxis, :])
