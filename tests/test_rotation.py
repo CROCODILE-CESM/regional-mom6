@@ -7,29 +7,36 @@ import numpy as np
 import os
 
 # Define the path where the curvilinear hgrid file is expected in the Docker container
-DOCKER_FILE_PATH = "/data/hgrid.nc"
+DOCKER_FILE_PATH = "/data/small_curvilinear_hgrid.nc"
 
 
 # Define the local directory where the user might have added the curvilinear hgrid file
-LOCAL_FILE_PATH = "/glade/u/home/manishrv/documents/nwa12_0.1/tides_dev/small_curvilinear_hgrid.nc"
+LOCAL_FILE_PATH = (
+    "/glade/u/home/manishrv/documents/nwa12_0.1/tides_dev/small_curvilinear_hgrid.nc"
+)
+
 
 @pytest.fixture
 def get_curvilinear_hgrid():
     # Check if the file exists in the Docker-specific location
     if os.path.exists(DOCKER_FILE_PATH):
         return xr.open_dataset(DOCKER_FILE_PATH)
-    
+
     # Check if the user has provided the file in a specific local directory
     elif os.path.exists(LOCAL_FILE_PATH):
         return xr.open_dataset(LOCAL_FILE_PATH)
-    
+
     # If neither location contains the file, raise an error
     else:
-        pytest.skip(f"Required file 'hgrid.nc' not found in {DOCKER_FILE_PATH} or {LOCAL_FILE_PATH}")
+        pytest.skip(
+            f"Required file 'hgrid.nc' not found in {DOCKER_FILE_PATH} or {LOCAL_FILE_PATH}"
+        )
+
 
 def test_get_curvilinear_hgrid_fixture(get_curvilinear_hgrid):
     # If the fixture fails to find the file, the test will be skipped.
     assert get_curvilinear_hgrid is not None
+
 
 def test_pseudo_hgrid_generation(get_curvilinear_hgrid):
     hgrid = get_curvilinear_hgrid
@@ -205,15 +212,18 @@ def test_mom6_angle_calculation_method(get_curvilinear_hgrid):
         }
     )
     assert (
-        (rot.mom6_angle_calculation_method(
-            hgrid.x.max() - hgrid.x.min(),
-            q_points.isel(nyp=slice(1, None), nxp=slice(0, -1)),
-            q_points.isel(nyp=slice(1, None), nxp=slice(1, None)),
-            q_points.isel(nyp=slice(0, -1), nxp=slice(0, -1)),
-            q_points.isel(nyp=slice(0, -1), nxp=slice(1, None)),
-            t_points,
-        ) -hgrid["angle_dx"].isel(nyp=ds_t.t_points_y, nxp=ds_t.t_points_x).values
-       ) < 1
+        (
+            rot.mom6_angle_calculation_method(
+                hgrid.x.max() - hgrid.x.min(),
+                q_points.isel(nyp=slice(1, None), nxp=slice(0, -1)),
+                q_points.isel(nyp=slice(1, None), nxp=slice(1, None)),
+                q_points.isel(nyp=slice(0, -1), nxp=slice(0, -1)),
+                q_points.isel(nyp=slice(0, -1), nxp=slice(1, None)),
+                t_points,
+            )
+            - hgrid["angle_dx"].isel(nyp=ds_t.t_points_y, nxp=ds_t.t_points_x).values
+        )
+        < 1
     ).all()
 
     return
@@ -226,11 +236,14 @@ def test_initialize_grid_rotation_angle(get_curvilinear_hgrid):
     hgrid = get_curvilinear_hgrid
     angle = rot.initialize_grid_rotation_angle(hgrid)
     ds_t = rgd.get_hgrid_arakawa_c_points(hgrid, "t")
-    assert ((angle.values  -hgrid["angle_dx"].isel(nyp=ds_t.t_points_y, nxp=ds_t.t_points_x).values
-       ) < 1).all()  # Angle is correct
     assert (
-        angle.values.shape == ds_t.tlon.shape
-    )  # Shape is correct
+        (
+            angle.values
+            - hgrid["angle_dx"].isel(nyp=ds_t.t_points_y, nxp=ds_t.t_points_x).values
+        )
+        < 1
+    ).all()  # Angle is correct
+    assert angle.values.shape == ds_t.tlon.shape  # Shape is correct
     return
 
 
