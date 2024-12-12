@@ -18,7 +18,7 @@ jobs:
   testing:
     needs: formatting
     runs-on: ubuntu-latest
-    container: ghcr.io/cosima/regional-test-env:updated
+    container: manishvenu1/rm6_with_curvilinear:v2
     defaults:
       run:
         shell: bash -el {0}
