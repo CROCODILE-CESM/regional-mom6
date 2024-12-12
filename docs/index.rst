@@ -91,9 +91,10 @@ The bibtex entry for the paper is:
    installation
    demos
    mom6-file-structure-primer
+   angle_calc
    api
    contributing
-   angle_calc
+   docker_image_testing
    
 
 Indices and tables
