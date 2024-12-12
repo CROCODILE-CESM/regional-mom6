@@ -31,7 +31,7 @@ def test_write_config(tmp_path):
             "run_files",
         )
     )
-    data_path = Path("data")
+    data_path = Path(tmp_path / "data")
     for path in (run_dir, input_dir, data_path):
         os.makedirs(str(path), exist_ok=True)
 
@@ -51,7 +51,7 @@ def test_write_config(tmp_path):
         expt_name="test",
         boundaries=["south", "north"],
     )
-    config_dict = expt.write_config_file()
+    config_dict = expt.write_config_file(tmp_path / "testing_config.json")
     assert config_dict["longitude_extent"] == tuple(longitude_extent)
     assert config_dict["latitude_extent"] == tuple(latitude_extent)
     assert config_dict["date_range"] == date_range
@@ -104,11 +104,12 @@ def test_load_config(tmp_path):
     run_dir = Path(
         tmp_path,
         os.path.join(
+            tmp_path,
             expt_name,
             "run_files",
         ),
     )
-    data_path = Path("data")
+    data_path = Path(tmp_path / "data")
     for path in (run_dir, input_dir, data_path):
         os.makedirs(str(path), exist_ok=True)
 
