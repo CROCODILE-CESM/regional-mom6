@@ -4,72 +4,35 @@ import regional_mom6.regridding as rgd
 import pytest
 import xarray as xr
 import numpy as np
+import os
 
+# Define the path where the curvilinear hgrid file is expected in the Docker container
+DOCKER_FILE_PATH = "/data/hgrid.nc"
+
+
+# Define the local directory where the user might have added the curvilinear hgrid file
+LOCAL_FILE_PATH = "/glade/u/home/manishrv/documents/nwa12_0.1/tides_dev/small_curvilinear_hgrid.nc"
 
 @pytest.fixture
-def generate_curvilinear_grid(request):
-    """
-    Params are a tuple longitude, tuple latitude, angle
-    """
+def get_curvilinear_hgrid():
+    # Check if the file exists in the Docker-specific location
+    if os.path.exists(DOCKER_FILE_PATH):
+        return xr.open_dataset(DOCKER_FILE_PATH)
+    
+    # Check if the user has provided the file in a specific local directory
+    elif os.path.exists(LOCAL_FILE_PATH):
+        return xr.open_dataset(LOCAL_FILE_PATH)
+    
+    # If neither location contains the file, raise an error
+    else:
+        pytest.skip(f"Required file 'hgrid.nc' not found in {DOCKER_FILE_PATH} or {LOCAL_FILE_PATH}")
 
-    def _generate_curvilinear_grid(
-        lon_point,
-        lat_point,
-        angle_base,
-        shift_angle_by=0,
-        nxp=10,
-        nyp=10,
-        resolution=0.1,
-    ):
-        """
-        Generate a curvilinear grid dataset with longitude, latitude, and angle arrays.
+def test_get_curvilinear_hgrid_fixture(get_curvilinear_hgrid):
+    # If the fixture fails to find the file, the test will be skipped.
+    assert get_curvilinear_hgrid is not None
 
-        Parameters:
-        lon_point : float
-            Point for the lower left corner of the grid
-        lat_point : float
-            Point for the lower left corner of the grid
-        angle_base : float
-            Base angle (in radians) to initialize the grid angles.
-        shift_angle_by : float, optional
-            Maximum random variation to add or subtract from the base angle (default is 0).
-        nxp : int, optional
-            Number of points in the longitude direction (default is 10).
-        nyp : int, optional
-            Number of points in the latitude direction (default is 10).
-        resolution : float, optional
-            Loose resolution of the grid (default is 0.1).
-
-        Returns:
-        xarray.Dataset
-            Dataset containing 'x' (longitude), 'y' (latitude), and 'angle' arrays with metadata.
-        """
-        # Generate logical grid
-        lon = np.zeros((nyp, nxp))
-        lat = np.zeros((nyp, nxp))
-
-        lon[0][0] = lon_point
-        lat[0][0] = lat_point
-
-        angle = angle_base + np.random.uniform(
-            -shift_angle_by, shift_angle_by, (nyp, nxp)
-        )
-
-        # based on the angle, construct the grid from these points.
-
-        return xr.Dataset(
-            {
-                "x": (("nyp", "nxp"), lon),
-                "y": (("nyp", "nxp"), lat),
-                "angle": (("nyp", "nxp"), angle),
-            }
-        )
-
-    return _generate_curvilinear_grid
-
-
-def test_pseudo_hgrid_generation(generate_curvilinear_grid):
-    hgrid = generate_curvilinear_grid([100, 110], [10, 20], 10)
+def test_pseudo_hgrid_generation(get_curvilinear_hgrid):
+    hgrid = get_curvilinear_hgrid
     pseudo_hgrid = rot.create_pseudo_hgrid(hgrid)
 
     # Check Size
@@ -179,7 +142,7 @@ def test_pseudo_hgrid_generation(generate_curvilinear_grid):
     return
 
 
-def test_mom6_angle_calculation_method(generate_curvilinear_grid):
+def test_mom6_angle_calculation_method(get_curvilinear_hgrid):
     """
     Check no rotation, up tilt, down tilt.
     """
@@ -223,8 +186,8 @@ def test_mom6_angle_calculation_method(generate_curvilinear_grid):
         == 0
     )
 
-    # Up tilt
-    hgrid = generate_curvilinear_grid([100, 110], [10, 20], 10, 10)
+    # Angled
+    hgrid = get_curvilinear_hgrid
     ds_t = rgd.get_hgrid_arakawa_c_points(hgrid, "t")
     ds_q = rgd.get_hgrid_arakawa_c_points(hgrid, "q")
 
@@ -242,72 +205,42 @@ def test_mom6_angle_calculation_method(generate_curvilinear_grid):
         }
     )
     assert (
-        rot.mom6_angle_calculation_method(
+        (rot.mom6_angle_calculation_method(
             hgrid.x.max() - hgrid.x.min(),
             q_points.isel(nyp=slice(1, None), nxp=slice(0, -1)),
             q_points.isel(nyp=slice(1, None), nxp=slice(1, None)),
             q_points.isel(nyp=slice(0, -1), nxp=slice(0, -1)),
             q_points.isel(nyp=slice(0, -1), nxp=slice(1, None)),
             t_points,
-        )
-        < 20
-    ).all()
-
-    ## Down tilt
-    hgrid = generate_curvilinear_grid([100, 110], [10, 20], -10, 10)
-
-    ds_t = rgd.get_hgrid_arakawa_c_points(hgrid, "t")
-    ds_q = rgd.get_hgrid_arakawa_c_points(hgrid, "q")
-
-    # Reformat into x, y comps
-    t_points = xr.Dataset(
-        {
-            "x": (("nyp", "nxp"), ds_t.tlon.data),
-            "y": (("nyp", "nxp"), ds_t.tlat.data),
-        }
-    )
-    q_points = xr.Dataset(
-        {
-            "x": (("nyp", "nxp"), ds_q.qlon.data),
-            "y": (("nyp", "nxp"), ds_q.qlat.data),
-        }
-    )
-    assert (
-        rot.mom6_angle_calculation_method(
-            hgrid.x.max() - hgrid.x.min(),
-            q_points.isel(nyp=slice(1, None), nxp=slice(0, -1)),
-            q_points.isel(nyp=slice(1, None), nxp=slice(1, None)),
-            q_points.isel(nyp=slice(0, -1), nxp=slice(0, -1)),
-            q_points.isel(nyp=slice(0, -1), nxp=slice(1, None)),
-            t_points,
-        )
-        > -20
+        ) -hgrid["angle_dx"].isel(nyp=ds_t.t_points_y, nxp=ds_t.t_points_x).values
+       ) < 1
     ).all()
 
     return
 
 
-def test_initialize_grid_rotation_angle(generate_curvilinear_grid):
+def test_initialize_grid_rotation_angle(get_curvilinear_hgrid):
     """
     Generate a curvilinear grid and test the grid rotation angle at t_points based on what we pass to generate_curvilinear_grid
     """
-    hgrid = generate_curvilinear_grid([100, 110], [10, 20], 10)
+    hgrid = get_curvilinear_hgrid
     angle = rot.initialize_grid_rotation_angle(hgrid)
-
-    assert (angle.values == 10).all()  # Angle is correct
+    ds_t = rgd.get_hgrid_arakawa_c_points(hgrid, "t")
+    assert ((angle.values  -hgrid["angle_dx"].isel(nyp=ds_t.t_points_y, nxp=ds_t.t_points_x).values
+       ) < 1).all()  # Angle is correct
     assert (
-        angle.values.shape == rgd.get_hgrid_arakawa_c_points(hgrid, "t").tlon.shape
+        angle.values.shape == ds_t.tlon.shape
     )  # Shape is correct
     return
 
 
-def test_initialize_grid_rotation_angle_using_pseudo_hgrid(generate_curvilinear_grid):
+def test_initialize_grid_rotation_angle_using_pseudo_hgrid(get_curvilinear_hgrid):
     """
     Generate a curvilinear grid and test the grid rotation angle at t_points based on what we pass to generate_curvilinear_grid
     """
-    hgrid = generate_curvilinear_grid([100, 110], [10, 20], 10)
-    angle = rot.initialize_grid_rotation_angle_using_pseudo_hgrid(hgrid)
+    hgrid = get_curvilinear_hgrid
+    angle = rot.initialize_grid_rotation_angles_using_pseudo_hgrid(hgrid)
 
-    assert (angle.values - hgrid.angle < 1).all()
+    assert (angle.values - hgrid.angle_dx < 1).all()
     assert angle.values.shape == hgrid.x.shape
     return
