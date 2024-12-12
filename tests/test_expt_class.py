@@ -17,8 +17,6 @@ import xarray as xr
         "number_vertical_layers",
         "layer_thickness_ratio",
         "depth",
-        "mom_run_dir",
-        "mom_input_dir",
         "toolpath_dir",
         "hgrid_type",
     ),
@@ -31,8 +29,6 @@ import xarray as xr
             5,
             1,
             1000,
-            "rundir/",
-            "inputdir/",
             "toolpath",
             "even_spacing",
         ),
@@ -46,12 +42,12 @@ def test_setup_bathymetry(
     number_vertical_layers,
     layer_thickness_ratio,
     depth,
-    mom_run_dir,
-    mom_input_dir,
     toolpath_dir,
     hgrid_type,
     tmp_path,
 ):
+    mom_run_dir = tmp_path / "rundir"
+    mom_input_dir = tmp_path / "inputdir"
     expt = experiment(
         longitude_extent=longitude_extent,
         latitude_extent=latitude_extent,
@@ -166,8 +162,7 @@ dims = ["silly_lat", "silly_lon", "silly_depth"]
 
 coords = {"silly_lat": silly_lat, "silly_lon": silly_lon, "silly_depth": silly_depth}
 
-mom_run_dir = "rundir/"
-mom_input_dir = "inputdir/"
+
 toolpath_dir = "toolpath"
 hgrid_type = "even_spacing"
 
@@ -198,8 +193,6 @@ maximum_temperature_in_C = np.max(temp_in_C)
         "number_vertical_layers",
         "layer_thickness_ratio",
         "depth",
-        "mom_run_dir",
-        "mom_input_dir",
         "toolpath_dir",
         "hgrid_type",
     ),
@@ -212,8 +205,6 @@ maximum_temperature_in_C = np.max(temp_in_C)
             number_vertical_layers,
             layer_thickness_ratio,
             depth,
-            "rundir/",
-            "inputdir/",
             "toolpath",
             "even_spacing",
         ),
@@ -227,8 +218,6 @@ def test_ocean_forcing(
     number_vertical_layers,
     layer_thickness_ratio,
     depth,
-    mom_run_dir,
-    mom_input_dir,
     toolpath_dir,
     hgrid_type,
     temp_dataarray_initial_condition,
@@ -246,7 +235,8 @@ def test_ocean_forcing(
         "silly_lon": silly_lon,
         "silly_depth": silly_depth,
     }
-
+    mom_run_dir = tmp_path / "rundir"
+    mom_input_dir = tmp_path / "inputdir"
     expt = experiment(
         longitude_extent=longitude_extent,
         latitude_extent=latitude_extent,
@@ -332,8 +322,6 @@ def test_ocean_forcing(
         "number_vertical_layers",
         "layer_thickness_ratio",
         "depth",
-        "mom_run_dir",
-        "mom_input_dir",
         "toolpath_dir",
         "hgrid_type",
     ),
@@ -346,8 +334,6 @@ def test_ocean_forcing(
             5,
             1,
             1000,
-            "rundir/",
-            "inputdir/",
             "toolpath",
             "even_spacing",
         ),
@@ -361,8 +347,6 @@ def test_rectangular_boundaries(
     number_vertical_layers,
     layer_thickness_ratio,
     depth,
-    mom_run_dir,
-    mom_input_dir,
     toolpath_dir,
     hgrid_type,
     tmp_path,
@@ -443,7 +427,8 @@ def test_rectangular_boundaries(
     )
     eastern_boundary.to_netcdf(tmp_path / "east_unprocessed.nc")
     eastern_boundary.close()
-
+    mom_run_dir = tmp_path / "rundir"
+    mom_input_dir = tmp_path / "inputdir"
     expt = experiment(
         longitude_extent=longitude_extent,
         latitude_extent=latitude_extent,

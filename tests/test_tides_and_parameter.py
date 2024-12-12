@@ -20,8 +20,8 @@ IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 @pytest.fixture(scope="module")
 def dummy_tidal_data():
-    nx = 2160
-    ny = 1081
+    nx = 100
+    ny = 100
     nc = 15
     nct = 4
 
@@ -156,8 +156,8 @@ def dummy_bathymetry_data():
     return bathymetry
 
 
-@pytest.fixture(scope="module")
-def full_expt_setup(dummy_bathymetry_data):
+@pytest.fixture()
+def full_expt_setup(dummy_bathymetry_data, tmp_path):
 
     expt_name = "testing"
 
@@ -169,6 +169,7 @@ def full_expt_setup(dummy_bathymetry_data):
     ## Place where all your input files go
     input_dir = Path(
         os.path.join(
+            tmp_path,
             expt_name,
             "inputs",
         )
@@ -177,11 +178,12 @@ def full_expt_setup(dummy_bathymetry_data):
     ## Directory where you'll run the experiment from
     run_dir = Path(
         os.path.join(
+            tmp_path,
             expt_name,
             "run_files",
         )
     )
-    data_path = Path("data")
+    data_path = Path(tmp_path, "data")
     for path in (run_dir, input_dir, data_path):
         os.makedirs(str(path), exist_ok=True)
     bathy_path = data_path / "bathymetry.nc"
