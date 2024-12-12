@@ -94,7 +94,7 @@ The bibtex entry for the paper is:
    angle_calc
    api
    contributing
-   docker_image_testing
+   docker_image_dev
    
 
 Indices and tables

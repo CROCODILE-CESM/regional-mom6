@@ -29,7 +29,7 @@ Then, we need to build the image, tag it, and push it
 ```
 docker build -t my-custom-image . # IN THE DIRECTORY WITH THE DOCKERFILE
 docker tag my-custom-image ghcr.io/cosima/regional-test-env:<new_tag>
-docker ghcr.io/cosima/regional-test-env:<new_tag>
+docker push ghcr.io/cosima/regional-test-env:<new_tag>
 ```
 
 
