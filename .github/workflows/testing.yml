@@ -18,7 +18,7 @@ jobs:
   testing:
     needs: formatting
     runs-on: ubuntu-latest
-    container: manishvenu1/rm6_with_curvilinear:v2
+    container: ghcr.io/crocodile-cesm/crocodile_rm6_test_env:latest
     defaults:
       run:
         shell: bash -el {0}
