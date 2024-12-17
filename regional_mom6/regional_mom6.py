@@ -1542,6 +1542,7 @@ class experiment:
         varnames,
         arakawa_grid="A",
         boundary_type="rectangular",
+        bathymetry_path=None,
         rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
@@ -1558,6 +1559,8 @@ class experiment:
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the boundary forcing.
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             boundary_type (Optional[str]): Type of box around region. Currently, only ``'rectangular'`` is supported.
+            bathymetry_path (Optional[str]): Path to the bathymetry file. Default is None, in which case the bathymetry file is assumed to be in the input directory.
+            rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is 'GIVEN_ANGLE'.
         """
         if boundary_type != "rectangular":
             raise ValueError(
@@ -1578,6 +1581,8 @@ class experiment:
             raise ValueError(
                 "This method only supports up to four boundaries. To set up more complex boundary shapes you can manually call the 'simple_boundary' method for each boundary."
             )
+        if bathymetry_path is None:
+            bathymetry_path = self.mom_input_dir / "bathymetry.nc"
 
         # Now iterate through our four boundaries
         for orientation in self.boundaries:
@@ -1593,6 +1598,7 @@ class experiment:
                     orientation
                 ),  # A number to identify the boundary; indexes from 1
                 arakawa_grid=arakawa_grid,
+                bathymetry_path=bathymetry_path,
                 rotational_method=rotational_method,
             )
 
@@ -1604,6 +1610,7 @@ class experiment:
         segment_number,
         arakawa_grid="A",
         boundary_type="simple",
+        bathymetry_path=None,
         rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
@@ -1624,6 +1631,8 @@ class experiment:
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the boundary forcing.
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             boundary_type (Optional[str]): Type of boundary. Currently, only ``'simple'`` is supported. Here 'simple' refers to boundaries that are parallel to lines of constant longitude or latitude.
+            bathymetry_path (Optional[str]): Path to the bathymetry file. Default is None, in which case the bathymetry file is assumed to be in the input directory.
+            rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is 'GIVEN_ANGLE'.
         """
 
         print("Processing {} boundary...".format(orientation), end="")
@@ -1635,6 +1644,7 @@ class experiment:
             raise ValueError("Only simple boundaries are supported by this method.")
         self.segments[orientation] = segment(
             hgrid=self.hgrid,
+            bathymetry_path=bathymetry_path,
             infile=path_to_bc,  # location of raw boundary
             outfolder=self.mom_input_dir,
             varnames=varnames,
@@ -1658,6 +1668,7 @@ class experiment:
         tpxo_velocity_filepath,
         tidal_constituents="read_from_expt_init",
         boundary_type="rectangle",
+        bathymetry_path=None,
         rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
@@ -1668,7 +1679,8 @@ class experiment:
             tidal_filename: Name of the tpxo product that's used in the tidal_filename. Should be h_tidal_filename, u_tidal_filename
             tidal_constituents: List of tidal constituents to include in the regridding. Default is [0] which is the M2 constituent.
             boundary_type (str): Type of boundary. Currently, only rectangle is supported. Here rectangle refers to boundaries that are parallel to lines of constant longitude or latitude.
-
+            bathymetry_path (str): Path to the bathymetry file. Default is None, in which case the bathymetry file is assumed to be in the input directory.
+            rotational_method (str): Method to use for rotating the tidal velocities. Default is 'GIVEN_ANGLE'.
         Returns:
             *.nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
 
@@ -1693,6 +1705,8 @@ class experiment:
             )
         if tidal_constituents != "read_from_expt_init":
             self.tidal_constituents = tidal_constituents
+        if bathymetry_path is None:
+            bathymetry_path = self.mom_input_dir / "bathymetry.nc"
         tpxo_h = (
             xr.open_dataset(Path(tpxo_elevation_filepath))
             .rename({"lon_z": "lon", "lat_z": "lat", "nc": "constituent"})
@@ -1740,6 +1754,7 @@ class experiment:
             if b not in self.segments.keys():  # I.E. not set yet
                 seg = segment(
                     hgrid=self.hgrid,
+                    bathymetry_path=bathymetry_path,
                     infile=None,  # location of raw boundary
                     outfolder=self.mom_input_dir,
                     varnames=None,
@@ -2851,6 +2866,7 @@ class segment:
         self,
         *,
         hgrid,
+        bathymetry_path,
         infile,
         outfolder,
         varnames,
@@ -2906,6 +2922,10 @@ class segment:
         self.infile = infile
         self.outfolder = outfolder
         self.hgrid = hgrid
+        try:
+            self.bathymetry = xr.open_dataset(bathymetry_path)
+        except:
+            self.bathymetry = None
         self.segment_name = segment_name
         self.repeat_year_forcing = repeat_year_forcing
 
@@ -3376,6 +3396,32 @@ class segment:
             segment_out[f"{coords.attrs['parallel']}_{self.segment_name}"].size
         )
         segment_out[f"{coords.attrs['perpendicular']}_{self.segment_name}"] = [0]
+
+        ## Add Boundary Mask ##
+        if self.bathymetry is not None:
+            print(
+                "Masking to bathymetry. If you don't want this, set bathymetry_path to None in the segment class."
+            )
+            mask = rgd.get_boundary_mask(
+                self.hgrid,
+                self.bathymetry,
+                self.orientation,
+                self.segment_name,
+                minimum_depth=0,
+            )
+            if self.orientation in ["east", "west"]:
+                mask = mask[:, np.newaxis]
+            for var in segment_out.data_vars.keys():
+                segment_out[var] = segment_out[var].fillna(0)
+                segment_out[var] = segment_out[var] * mask
+        else:
+            print(
+                "Warning: All NaNs filled b/c bathymetry wasn't provided to the function. Add bathymetry_path to the segment class to avoid this"
+            )
+            segment_out = segment_out.fillna(
+                0
+            )  # Without bathymetry, we can't assume the nans will be allowed in Boundary Conditions
+
         encoding_dict = {
             "time": {"dtype": "double"},
             f"nx_{self.segment_name}": {
@@ -3700,6 +3746,30 @@ class segment:
             {"lon": f"lon_{self.segment_name}", "lat": f"lat_{self.segment_name}"}
         )
 
+        ## Add Boundary Mask ##
+        if self.bathymetry is not None:
+            print(
+                "Masking to bathymetry. If you don't want this, set bathymetry_path to None in the segment class."
+            )
+            mask = rgd.get_boundary_mask(
+                self.hgrid,
+                self.bathymetry,
+                self.orientation,
+                self.segment_name,
+                minimum_depth=0,
+            )
+            if self.orientation in ["east", "west"]:
+                mask = mask[:, np.newaxis]
+            for var in ds.data_vars.keys():
+                ds[var] = ds[var].fillna(0)
+                ds[var] = ds[var] * mask
+        else:
+            print(
+                "Warning: All NaNs filled b/c bathymetry wasn't provided to the function. Add bathymetry_path to the segment class to avoid this"
+            )
+            ds = ds.fillna(0)
+            # Without bathymetry, we can't assume the nans will be allowed in Boundary Conditions
+
         ## Perform Encoding ##
 
         fname = f"{filename}_{self.segment_name}.nc"
@@ -3715,8 +3785,6 @@ class segment:
             ds, encoding, default_fill_value=netCDF4.default_fillvals["f8"]
         )
 
-        # Can't have nas in the land segments and such cuz it crashes
-        ds = ds.fillna(0)
         ## Export Files ##
         ds.to_netcdf(
             Path(self.outfolder / "forcing" / fname),
