@@ -443,6 +443,91 @@ def generate_layer_thickness(
     return ds
 
 
+def get_boundary_mask(
+    hgrid: xr.Dataset, bathy: xr.Dataset, side: str, segment_name: str, minimum_depth=0
+) -> np.ndarray:
+    """
+    Mask out the boundary conditions based on the bathymetry. We don't want to have boundary conditions on land.
+    Parameters
+    ----------
+    hgrid : xr.Dataset
+        The hgrid dataset
+    bathy : xr.Dataset
+        The bathymetry dataset
+    side : str
+        The side of the boundary, "north", "south", "east", or "west"
+    segment_name : str
+        The segment name
+    minimum_depth : float, optional
+        The minimum depth to consider land, by default 0
+    Returns
+    -------
+    np.Array
+        The boundary mask
+    """
+
+    # Hide the bathy as an angle field so we can take advantage of the coords function to get the boundary points.
+    bathy = bathy.rename({"lath": "nyp", "lonh": "nxp"})
+
+    # Copy Hgrid
+    bathy_2 = hgrid.copy(deep=True)
+
+    # Create new depth field
+    bathy_2["depth"] = bathy_2["angle_dx"]
+    bathy_2["depth"][:, :] = np.nan
+
+    # Fill at t_points (what bathy is determined at)
+    ds_t = get_hgrid_arakawa_c_points(hgrid, "t")
+    bathy_2["depth"][ds_t.t_points_y.values, ds_t.t_points_x.values] = bathy.depth
+
+    bathy_2_coords = coords(
+        bathy_2,
+        side,
+        segment_name,
+        angle_variable_name="depth",
+        coords_at_t_points=True,
+    )
+
+    # Get the Boundary Depth
+    bathy_2_coords["boundary_depth"] = bathy_2_coords["angle"]
+    land = 0
+    ocean = 1.0
+    boundary_mask = np.full(np.shape(coords(hgrid, side, segment_name).angle), ocean)
+    for i in range(len(bathy_2_coords["boundary_depth"])):
+        if bathy_2_coords["boundary_depth"][i] <= minimum_depth:
+            # The points to the left and right of this t-point are land points
+            boundary_mask[(i * 2) + 2] = land
+            boundary_mask[(i * 2) + 1] = land
+            boundary_mask[(i * 2)] = land
+
+    # If the corners are nans, we convert them to ocean as well.
+    if np.isnan(boundary_mask[0]):
+        boundary_mask[0] = ocean
+    if np.isnan(boundary_mask[-1]):
+        boundary_mask[-1] = ocean
+
+    # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
+    # Search for intersections
+    beaches_before = []
+    beaches_after = []
+    for index in range(1, len(boundary_mask) - 1):
+        if boundary_mask[index - 1] == land and boundary_mask[index] == ocean:
+            beaches_before.append(index)
+        elif boundary_mask[index + 1] == land and boundary_mask[index] == ocean:
+            beaches_after.append(index)
+    for beach in beaches_before:
+        for i in range(3):
+            if beach - 1 - i >= 0:
+                boundary_mask[beach - 1 - i] = ocean
+    for beach in beaches_before:
+        for i in range(3):
+            if beach + 1 + i >= 0:
+                boundary_mask[beach + 1 + i] = ocean
+    boundary_mask[np.where(boundary_mask == land)] = np.nan
+
+    return boundary_mask
+
+
 def generate_encoding(
     ds: xr.Dataset, encoding_dict, default_fill_value=netCDF4.default_fillvals["f8"]
 ) -> xr.Dataset:
