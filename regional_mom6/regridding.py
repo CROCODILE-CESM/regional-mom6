@@ -530,6 +530,81 @@ def get_boundary_mask(
     return boundary_mask
 
 
+def mask_dataset(
+    ds: xr.Dataset,
+    hgrid: xr.Dataset,
+    bathymetry: xr.Dataset,
+    orientation,
+    segment_name: str,
+) -> xr.Dataset:
+    """
+    This function masks the dataset to the provided bathymetry. If bathymetry is not provided, it fills all NaNs with 0.
+    Parameters
+    ----------
+    ds : xr.Dataset
+        The dataset to mask
+    hgrid : xr.Dataset
+        The hgrid dataset
+    bathymetry : xr.Dataset
+        The bathymetry dataset
+    orientation : str
+        The orientation of the boundary
+    segment_name : str
+        The segment name
+    """
+    ## Add Boundary Mask ##
+    if bathymetry is not None:
+        regridding_logger.info(
+            "Masking to bathymetry. If you don't want this, set bathymetry_path to None in the segment class."
+        )
+        mask = get_boundary_mask(
+            hgrid,
+            bathymetry,
+            orientation,
+            segment_name,
+            minimum_depth=0,
+        )
+        if orientation in ["east", "west"]:
+            mask = mask[:, np.newaxis]
+        else:
+            mask = mask[np.newaxis, :]
+
+        for var in ds.data_vars.keys():
+
+            ## Compare the dataset to the mask by reducing dims##
+            dataset_reduce_dim = ds[var]
+            for index in range(ds[var].ndim - 2):
+                dataset_reduce_dim = dataset_reduce_dim[0]
+            if orientation in ["east", "west"]:
+                dataset_reduce_dim = dataset_reduce_dim[:, 0]
+                mask_reduce = mask[:, 0]
+            else:
+                dataset_reduce_dim = dataset_reduce_dim[0, :]
+                mask_reduce = mask[0, :]
+            loc_nans_data = np.where(np.isnan(dataset_reduce_dim))
+            loc_nans_mask = np.where(np.isnan(mask_reduce))
+
+            ## Check if all nans in the data are in the mask without corners ##
+            if not np.isin(loc_nans_data[1:-1], loc_nans_mask[1:-1]).all():
+                regridding_logger.warning(
+                    f"NaNs in {var} not in mask. This values are filled with zeroes b/c they could cause issues with boundary conditions."
+                )
+
+                ## Remove Nans if needed ##
+                ds[var] = ds[var].fillna(0)
+
+            ## Apply the mask ##
+            ds[var] = ds[var] * mask
+    else:
+        regridding_logger.warning(
+            "All NaNs filled b/c bathymetry wasn't provided to the function. Add bathymetry_path to the segment class to avoid this"
+        )
+        ds = ds.fillna(
+            0
+        )  # Without bathymetry, we can't assume the nans will be allowed in Boundary Conditions
+    return ds
+
+
 def generate_encoding(
     ds: xr.Dataset, encoding_dict, default_fill_value=netCDF4.default_fillvals["f8"]
 ) -> xr.Dataset:

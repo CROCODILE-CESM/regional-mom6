@@ -3397,31 +3397,13 @@ class segment:
         )
         segment_out[f"{coords.attrs['perpendicular']}_{self.segment_name}"] = [0]
 
-        ## Add Boundary Mask ##
-        if self.bathymetry is not None:
-            print(
-                "Masking to bathymetry. If you don't want this, set bathymetry_path to None in the segment class."
-            )
-            mask = rgd.get_boundary_mask(
-                self.hgrid,
-                self.bathymetry,
-                self.orientation,
-                self.segment_name,
-                minimum_depth=0,
-            )
-            if self.orientation in ["east", "west"]:
-                mask = mask[:, np.newaxis]
-            for var in segment_out.data_vars.keys():
-                segment_out[var] = segment_out[var].fillna(0)
-                segment_out[var] = segment_out[var] * mask
-        else:
-            print(
-                "Warning: All NaNs filled b/c bathymetry wasn't provided to the function. Add bathymetry_path to the segment class to avoid this"
-            )
-            segment_out = segment_out.fillna(
-                0
-            )  # Without bathymetry, we can't assume the nans will be allowed in Boundary Conditions
-
+        segment_out = rgd.mask_dataset(
+            segment_out,
+            self.hgrid,
+            self.bathymetry,
+            self.orientation,
+            self.segment_name,
+        )
         encoding_dict = {
             "time": {"dtype": "double"},
             f"nx_{self.segment_name}": {
@@ -3746,30 +3728,9 @@ class segment:
             {"lon": f"lon_{self.segment_name}", "lat": f"lat_{self.segment_name}"}
         )
 
-        ## Add Boundary Mask ##
-        if self.bathymetry is not None:
-            print(
-                "Masking to bathymetry. If you don't want this, set bathymetry_path to None in the segment class."
-            )
-            mask = rgd.get_boundary_mask(
-                self.hgrid,
-                self.bathymetry,
-                self.orientation,
-                self.segment_name,
-                minimum_depth=0,
-            )
-            if self.orientation in ["east", "west"]:
-                mask = mask[:, np.newaxis]
-            for var in ds.data_vars.keys():
-                ds[var] = ds[var].fillna(0)
-                ds[var] = ds[var] * mask
-        else:
-            print(
-                "Warning: All NaNs filled b/c bathymetry wasn't provided to the function. Add bathymetry_path to the segment class to avoid this"
-            )
-            ds = ds.fillna(0)
-            # Without bathymetry, we can't assume the nans will be allowed in Boundary Conditions
-
+        ds = rgd.mask_dataset(
+            ds, self.hgrid, self.bathymetry, self.orientation, self.segment_name
+        )
         ## Perform Encoding ##
 
         fname = f"{filename}_{self.segment_name}.nc"
