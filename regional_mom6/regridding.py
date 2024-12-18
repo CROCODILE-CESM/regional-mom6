@@ -607,7 +607,7 @@ def mask_dataset(
 
 def generate_encoding(
     ds: xr.Dataset, encoding_dict, default_fill_value=netCDF4.default_fillvals["f8"]
-) -> xr.Dataset:
+) -> dict:
     """
     Generate the encoding dictionary for the dataset
     Parameters
