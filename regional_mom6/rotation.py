@@ -12,19 +12,17 @@ class RotationMethod(Enum):
     """
     This Enum defines the rotational method to be used in boundary conditions. The main regional mom6 class passes in this enum to regrid_tides and regrid_velocity_tracers to determine the method used.
 
-    KEITH_DOUBLE_REGRIDDING: This method is used to regrid the boundary conditions to the t-points, b/c we can calculate t-point angle the same way as MOM6, rotate the conditions, and regrid again to the q-u-v, or actual, boundary
-    FRED_AVERAGE: This method is used with the basis that we can find the angles at the q-u-v points by pretending we have another row/column of the hgrid with the same distances as the t-point to u/v points in the actual grid then use the four poitns to calculate the angle the exact same way MOM6 does.
+    EXPAND_GRID: This method is used with the basis that we can find the angles at the q-u-v points by pretending we have another row/column of the hgrid with the same distances as the t-point to u/v points in the actual grid then use the four poitns to calculate the angle the exact same way MOM6 does.
     GIVEN_ANGLE: This is the original default RM6 method which expects a pre-given angle called angle_dx
     NO_ROTATION: Grids parallel to lat/lon axes, no rotation needed
     """
 
-    KEITH_DOUBLE_REGRIDDING = 1
-    FRED_AVERAGE = 2
-    GIVEN_ANGLE = 3
-    NO_ROTATION = 4
+    EXPAND_GRID = 1
+    GIVEN_ANGLE = 2
+    NO_ROTATION = 3
 
 
-def initialize_grid_rotation_angles_using_pseudo_hgrid(
+def initialize_grid_rotation_angles_using_expanded_hgrid(
     hgrid: xr.Dataset,
 ) -> xr.Dataset:
     """
@@ -34,22 +32,20 @@ def initialize_grid_rotation_angles_using_pseudo_hgrid(
     ----------
     hgrid: xr.Dataset
         The hgrid dataset
-    pseudo_hgrid: xr.Dataset
-        The pseudo hgrid dataset
     Returns
     -------
     xr.DataArray
         The t-point angles
     """
-    # Get Fred Pseudo grid
-    pseudo_hgrid = create_pseudo_hgrid(hgrid)
+    # Get expanded (pseudo) grid
+    expanded_hgrid = create_expanded_hgrid(hgrid)
 
     return mom6_angle_calculation_method(
-        pseudo_hgrid.x.max() - pseudo_hgrid.x.min(),
-        pseudo_hgrid.isel(nyp=slice(2, None), nxp=slice(0, -2)),
-        pseudo_hgrid.isel(nyp=slice(2, None), nxp=slice(2, None)),
-        pseudo_hgrid.isel(nyp=slice(0, -2), nxp=slice(0, -2)),
-        pseudo_hgrid.isel(nyp=slice(0, -2), nxp=slice(2, None)),
+        expanded_hgrid.x.max() - expanded_hgrid.x.min(),
+        expanded_hgrid.isel(nyp=slice(2, None), nxp=slice(0, -2)),
+        expanded_hgrid.isel(nyp=slice(2, None), nxp=slice(2, None)),
+        expanded_hgrid.isel(nyp=slice(0, -2), nxp=slice(0, -2)),
+        expanded_hgrid.isel(nyp=slice(0, -2), nxp=slice(2, None)),
         hgrid,
     )
 
@@ -179,10 +175,13 @@ def mom6_angle_calculation_method(
     return t_angles
 
 
-def create_pseudo_hgrid(hgrid: xr.Dataset) -> xr.Dataset:
+def create_expanded_hgrid(hgrid: xr.Dataset, expansion_width=1) -> xr.Dataset:
     """
     Adds an additional boundary to the hgrid to allow for the calculation of the angle_dx for the boundary points using the method in MOM6
     """
+    if expansion_width != 1:
+        raise NotImplementedError("Only expansion_width = 1 is supported")
+
     pseudo_hgrid_x = np.full((len(hgrid.nyp) + 2, len(hgrid.nxp) + 2), np.nan)
     pseudo_hgrid_y = np.full((len(hgrid.nyp) + 2, len(hgrid.nxp) + 2), np.nan)
 

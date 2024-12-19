@@ -23,8 +23,7 @@ MOM6 only calculates the angle at t-points. For boundary rotation, we need the a
 
 # Convert this method to boundary angles - 3 Options
 1. **GIVEN_ANGLE**: Don't calculate the angle and use the user-provided field in the hgrid called "angle_dx"
-2. **FRED_AVERAGE**: Calculate another boundary row/column points around the hgrid using simple difference techniques. Use the new points to calculate the angle at the boundaries. This works because we can now access the four points needed to calculate the angle, where previously at boundaries we would be missing at least two. 
-3. **KEITH_DOUBLE_REGRIDDING**: Regrid the boundary conditions to the t-points. Rotate using the MOM6 angle calculation. Regrid to the boundary.
+2. **EXPAND_GRID**: Calculate another boundary row/column points around the hgrid using simple difference techniques. Use the new points to calculate the angle at the boundaries. This works because we can now access the four points needed to calculate the angle, where previously at boundaries we would be missing at least two. 
 
 
 ## Code Description
@@ -35,8 +34,7 @@ Most calculation code is implemented in the rotation.py script, and the function
 ### Calculation Code (rotation.py)
 1. **Rotational Method Definition**:  Rotational Methods are defined in the enum class "Rotational Method" in rotation.py.
 2. **MOM6 Angle Calculation**: The method is implemented in "mom6_angle_calculation_method" in rotation.py and the direct t-point angle calculation is "initialize_grid_rotation_angle". 
-3. **Fred's Pseudo Grid Averaging**: The method to add the additional boundary row/columns is referenced in "pseudo_hgrid" functions in rotation.py
-4. **Keith's Double Regridding**: Keith's double regridding makes use of the "initialize_grid_rotation_angle" function in rotation.py.
+3. **Fred's Pseudo Grid Expansion**: The method to add the additional boundary row/columns is referenced in "pseudo_hgrid" functions in rotation.py
 
 ### Implementation Code (regional_mom6.py)
 Both regridding functions (regrid_velocity_tracers, regrid_tides) accept a parameter called "rotational_method" which takes the Enum class defining the rotational method.
@@ -45,8 +43,3 @@ We then define each method with a bunch of if statements. Here are the processes
 
 1. Given angle is the default method of accepting the hgrid's angle_dx
 2. Fred's method is the least code, and we simply swap out the hgrid angle with the generated one we calculate right where we do the rotation.
-3. Keith's method is where we actually do a bit more:
-    1. We change the call to "coords" to get the t-points so that the initial regridding is to the t_points intead of the boundary
-    2. We then rotate it using a similar method to Fred's of regenerating the angle right where we do the rotation
-    3. Then we have to regrid the result to the actual boundary. Because (by definition) it is a curvilinear grid, we have to restructure the dataset to include an extra dimension so that xesmf plays nicely, then regrid the whole thing to the boundary. It adds a decent amount of code I guess.
-

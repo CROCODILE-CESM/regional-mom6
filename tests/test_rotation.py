@@ -12,44 +12,44 @@ def test_get_curvilinear_hgrid_fixture(get_curvilinear_hgrid):
     assert get_curvilinear_hgrid is not None
 
 
-def test_pseudo_hgrid_generation(get_curvilinear_hgrid):
+def test_expanded_hgrid_generation(get_curvilinear_hgrid):
     hgrid = get_curvilinear_hgrid
-    pseudo_hgrid = rot.create_pseudo_hgrid(hgrid)
+    expanded_hgrid = rot.create_expanded_hgrid(hgrid)
 
     # Check Size
-    assert len(pseudo_hgrid.nxp) == (len(hgrid.nxp) + 2)
-    assert len(pseudo_hgrid.nyp) == (len(hgrid.nyp) + 2)
+    assert len(expanded_hgrid.nxp) == (len(hgrid.nxp) + 2)
+    assert len(expanded_hgrid.nyp) == (len(hgrid.nyp) + 2)
 
     # Check pseudo_hgrid keeps the same values
-    assert (pseudo_hgrid.x.values[1:-1, 1:-1] == hgrid.x.values).all()
-    assert (pseudo_hgrid.y.values[1:-1, 1:-1] == hgrid.y.values).all()
+    assert (expanded_hgrid.x.values[1:-1, 1:-1] == hgrid.x.values).all()
+    assert (expanded_hgrid.y.values[1:-1, 1:-1] == hgrid.y.values).all()
 
     # Check extra boundary has realistic values
     diff_check = 1
     assert (
         (
-            pseudo_hgrid.x.values[0, 1:-1]
+            expanded_hgrid.x.values[0, 1:-1]
             - (hgrid.x.values[0, :] - (hgrid.x.values[1, :] - hgrid.x.values[0, :]))
         )
         < diff_check
     ).all()
     assert (
         (
-            pseudo_hgrid.x.values[1:-1, 0]
+            expanded_hgrid.x.values[1:-1, 0]
             - (hgrid.x.values[:, 0] - (hgrid.x.values[:, 1] - hgrid.x.values[:, 0]))
         )
         < diff_check
     ).all()
     assert (
         (
-            pseudo_hgrid.x.values[-1, 1:-1]
+            expanded_hgrid.x.values[-1, 1:-1]
             - (hgrid.x.values[-1, :] - (hgrid.x.values[-2, :] - hgrid.x.values[-1, :]))
         )
         < diff_check
     ).all()
     assert (
         (
-            pseudo_hgrid.x.values[1:-1, -1]
+            expanded_hgrid.x.values[1:-1, -1]
             - (hgrid.x.values[:, -1] - (hgrid.x.values[:, -2] - hgrid.x.values[:, -1]))
         )
         < diff_check
@@ -57,66 +57,66 @@ def test_pseudo_hgrid_generation(get_curvilinear_hgrid):
 
     # Check corners for the same...
     assert (
-        pseudo_hgrid.x.values[0, 0]
+        expanded_hgrid.x.values[0, 0]
         - (hgrid.x.values[0, 0] - (hgrid.x.values[1, 1] - hgrid.x.values[0, 0]))
     ) < diff_check
     assert (
-        pseudo_hgrid.x.values[-1, 0]
+        expanded_hgrid.x.values[-1, 0]
         - (hgrid.x.values[-1, 0] - (hgrid.x.values[-2, 1] - hgrid.x.values[-1, 0]))
     ) < diff_check
     assert (
-        pseudo_hgrid.x.values[0, -1]
+        expanded_hgrid.x.values[0, -1]
         - (hgrid.x.values[0, -1] - (hgrid.x.values[1, -2] - hgrid.x.values[0, -1]))
     ) < diff_check
     assert (
-        pseudo_hgrid.x.values[-1, -1]
+        expanded_hgrid.x.values[-1, -1]
         - (hgrid.x.values[-1, -1] - (hgrid.x.values[-2, -2] - hgrid.x.values[-1, -1]))
     ) < diff_check
 
     # Same for y
     assert (
         (
-            pseudo_hgrid.y.values[0, 1:-1]
+            expanded_hgrid.y.values[0, 1:-1]
             - (hgrid.y.values[0, :] - (hgrid.y.values[1, :] - hgrid.y.values[0, :]))
         )
         < diff_check
     ).all()
     assert (
         (
-            pseudo_hgrid.y.values[1:-1, 0]
+            expanded_hgrid.y.values[1:-1, 0]
             - (hgrid.y.values[:, 0] - (hgrid.y.values[:, 1] - hgrid.y.values[:, 0]))
         )
         < diff_check
     ).all()
     assert (
         (
-            pseudo_hgrid.y.values[-1, 1:-1]
+            expanded_hgrid.y.values[-1, 1:-1]
             - (hgrid.y.values[-1, :] - (hgrid.y.values[-2, :] - hgrid.y.values[-1, :]))
         )
         < diff_check
     ).all()
     assert (
         (
-            pseudo_hgrid.y.values[1:-1, -1]
+            expanded_hgrid.y.values[1:-1, -1]
             - (hgrid.y.values[:, -1] - (hgrid.y.values[:, -2] - hgrid.y.values[:, -1]))
         )
         < diff_check
     ).all()
 
     assert (
-        pseudo_hgrid.y.values[0, 0]
+        expanded_hgrid.y.values[0, 0]
         - (hgrid.y.values[0, 0] - (hgrid.y.values[1, 1] - hgrid.y.values[0, 0]))
     ) < diff_check
     assert (
-        pseudo_hgrid.y.values[-1, 0]
+        expanded_hgrid.y.values[-1, 0]
         - (hgrid.y.values[-1, 0] - (hgrid.y.values[-2, 1] - hgrid.y.values[-1, 0]))
     ) < diff_check
     assert (
-        pseudo_hgrid.y.values[0, -1]
+        expanded_hgrid.y.values[0, -1]
         - (hgrid.y.values[0, -1] - (hgrid.y.values[1, -2] - hgrid.y.values[0, -1]))
     ) < diff_check
     assert (
-        pseudo_hgrid.y.values[-1, -1]
+        expanded_hgrid.y.values[-1, -1]
         - (hgrid.y.values[-1, -1] - (hgrid.y.values[-2, -2] - hgrid.y.values[-1, -1]))
     ) < diff_check
 
@@ -221,12 +221,12 @@ def test_initialize_grid_rotation_angle(get_curvilinear_hgrid):
     return
 
 
-def test_initialize_grid_rotation_angle_using_pseudo_hgrid(get_curvilinear_hgrid):
+def test_initialize_grid_rotation_angle_using_expanded_hgrid(get_curvilinear_hgrid):
     """
     Generate a curvilinear grid and test the grid rotation angle at t_points based on what we pass to generate_curvilinear_grid
     """
     hgrid = get_curvilinear_hgrid
-    angle = rot.initialize_grid_rotation_angles_using_pseudo_hgrid(hgrid)
+    angle = rot.initialize_grid_rotation_angles_using_expanded_hgrid(hgrid)
 
     assert (angle.values - hgrid.angle_dx < 1).all()
     assert angle.values.shape == hgrid.x.shape

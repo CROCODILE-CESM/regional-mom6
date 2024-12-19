@@ -14,7 +14,7 @@ import shutil
 import os
 import importlib.resources
 import datetime
-from .utils import quadrilateral_areas, ap2ep, ep2ap
+from .utils import quadrilateral_areas, ap2ep, ep2ap, is_rectilinear_hgrid
 import pandas as pd
 from pathlib import Path
 import glob
@@ -2933,18 +2933,12 @@ class segment:
         Args:
         rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
         """
-
+        if rotational_method == rot.RotationMethod.NO_ROTATION:
+            if not is_rectilinear_hgrid(self.hgrid):
+                raise ValueError("NO_ROTATION method only works with rectilinear grids")
         rawseg = xr.open_dataset(self.infile, decode_times=False, engine="netcdf4")
 
-        # If we pick Keith's Rotational Method, we regrid initially to t_points
-        if rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-
-            coords = rgd.coords(
-                self.hgrid, self.orientation, self.segment_name, coords_at_t_points=True
-            )
-        # If not, we get the boundary points
-        else:
-            coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
+        coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
         if self.arakawa_grid == "A":
 
@@ -2971,11 +2965,11 @@ class segment:
                     radian_angle=np.radians(coords.angle.values),
                 )
 
-            elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
+            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
 
                 # Recalculate entire hgrid angles
                 self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
                 )
 
                 # Get just the boundary
@@ -2992,73 +2986,7 @@ class segment:
                     regridded[self.v],
                     radian_angle=np.radians(degree_angle.values),
                 )
-            elif rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-
-                # Get Hgrid t_point indexes
-                ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
-                self.hgrid["angle_dx_rm6"] = xr.full_like(
-                    self.hgrid["angle_dx"], np.nan
-                )
-
-                # Fill Hgrid t_points with the MOM6 angle calculation
-                self.hgrid["angle_dx_rm6"][
-                    ds.t_points_y.values, ds.t_points_x.values
-                ] = rot.initialize_grid_rotation_angle(self.hgrid)
-
-                # Get just the angles at the t_points of the boundary (basically one row/column in)
-                degree_angle = rgd.coords(
-                    self.hgrid,
-                    self.orientation,
-                    self.segment_name,
-                    coords_at_t_points=True,
-                    angle_variable_name="angle_dx_rm6",
-                )["angle"]
-
-                # Rotate
-                rotated_u, rotated_v = self.rotate(
-                    regridded[self.u],
-                    regridded[self.v],
-                    radian_angle=np.radians(degree_angle.values),
-                )
-                coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
-
-                # Store data in a new dataset for regridding to the boundary
-                ds = xr.Dataset()
-                ds["rotated_u"] = rotated_u
-                ds["rotated_v"] = rotated_v
-
-                # Add a new dimension because while the boundary is just one cell wide, the regridding function expects a 2D array b/c curvilinear by definition
-                rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
-                rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
-                rgd.add_secondary_dimension(
-                    ds, "rotated_u", coords, "", to_beginning=True
-                )
-                rgd.add_secondary_dimension(
-                    ds, "rotated_v", coords, "", to_beginning=True
-                )
-
-                # Regrid
-                regridder_keith = rgd.create_regridder(ds, coords, method="nearest_s2d")
-
-                rotated_u = regridder_keith(ds["rotated_u"])
-                rotated_v = regridder_keith(ds["rotated_v"])
-
-                # Also need to re-regrid the rest of the variables with the correct coords
-                regridder = rgd.create_regridder(
-                    rawseg[self.u],
-                    coords,
-                    self.outfolder
-                    / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
-                )
-                regridded = regridder(
-                    rawseg[
-                        [self.u, self.v, self.eta]
-                        + [self.tracers[i] for i in self.tracers]
-                    ]
-                )
-
             elif rotational_method == rot.RotationMethod.NO_ROTATION:
-
                 # Just transfer values
                 rotated_u, rotated_v = regridded[self.u], regridded[self.v]
 
@@ -3096,9 +3024,9 @@ class segment:
                     velocities_out["v"],
                     radian_angle=np.radians(coords.angle.values),
                 )
-            elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
+            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
                 self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
                 )
                 degree_angle = rgd.coords(
                     self.hgrid,
@@ -3111,60 +3039,6 @@ class segment:
                     velocities_out["v"],
                     radian_angle=np.radians(degree_angle.values),
                 )
-            elif rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-                ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
-                self.hgrid["angle_dx_rm6"] = xr.full_like(
-                    self.hgrid["angle_dx"], np.nan
-                )
-                self.hgrid["angle_dx_rm6"][
-                    ds.t_points_y.values, ds.t_points_x.values
-                ] = rot.initialize_grid_rotation_angle(self.hgrid)
-                degree_angle = rgd.coords(
-                    self.hgrid,
-                    self.orientation,
-                    self.segment_name,
-                    coords_at_t_points=True,
-                    angle_variable_name="angle_dx_rm6",
-                )["angle"]
-                velocities_out["u"], velocities_out["v"] = self.rotate(
-                    velocities_out["u"],
-                    velocities_out["v"],
-                    radian_angle=np.radians(degree_angle.values),
-                )
-
-                coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
-
-                ds = xr.Dataset()
-                ds["rotated_u"] = velocities_out["u"]
-                ds["rotated_v"] = velocities_out["v"]
-
-                rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
-                rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
-                rgd.add_secondary_dimension(
-                    ds, "rotated_u", coords, "", to_beginning=True
-                )
-                rgd.add_secondary_dimension(
-                    ds, "rotated_v", coords, "", to_beginning=True
-                )
-
-                regridder_keith = rgd.create_regridder(ds, coords, method="nearest_s2d")
-                velocities_out["u"] = regridder_keith(ds["rotated_u"])
-                velocities_out["v"] = regridder_keith(ds["rotated_v"])
-
-                ## Also need to re-regrid the rest of the variables with the correct coords
-                regridder = rgd.create_regridder(
-                    rawseg[self.u],
-                    coords,
-                    self.outfolder
-                    / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
-                )
-                regridded = regridder(
-                    rawseg[
-                        [self.u, self.v, self.eta]
-                        + [self.tracers[i] for i in self.tracers]
-                    ]
-                )
-
             elif rotational_method == rot.RotationMethod.NO_ROTATION:
                 velocities_out["u"], velocities_out["v"] = (
                     velocities_out["u"],
@@ -3215,9 +3089,9 @@ class segment:
                     regridded_v,
                     radian_angle=np.radians(coords.angle.values),
                 )
-            elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
+            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
                 self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
                 )
                 degree_angle = rgd.coords(
                     self.hgrid,
@@ -3229,58 +3103,6 @@ class segment:
                     regridded_u,
                     regridded_v,
                     radian_angle=np.radians(degree_angle.values),
-                )
-            elif rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-                ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
-                self.hgrid["angle_dx_rm6"] = xr.full_like(
-                    self.hgrid["angle_dx"], np.nan
-                )
-                self.hgrid["angle_dx_rm6"][
-                    ds.t_points_y.values, ds.t_points_x.values
-                ] = rot.initialize_grid_rotation_angle(self.hgrid)
-                degree_angle = rgd.coords(
-                    self.hgrid,
-                    self.orientation,
-                    self.segment_name,
-                    coords_at_t_points=True,
-                    angle_variable_name="angle_dx_rm6",
-                )["angle"]
-                rotated_u, rotated_v = self.rotate(
-                    regridded_u,
-                    regridded_v,
-                    radian_angle=np.radians(coords.angle.values),
-                )
-
-                coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
-                ds = xr.Dataset()
-                ds["rotated_u"] = rotated_u
-                ds["rotated_v"] = rotated_v
-
-                rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
-                rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
-                rgd.add_secondary_dimension(
-                    ds, "rotated_u", coords, "", to_beginning=True
-                )
-                rgd.add_secondary_dimension(
-                    ds, "rotated_v", coords, "", to_beginning=True
-                )
-
-                regridder_keith = rgd.create_regridder(ds, coords, method="nearest_s2d")
-                rotated_u = regridder_keith(ds["rotated_u"])
-                rotated_v = regridder_keith(ds["rotated_v"])
-
-                ## Also need to re-regrid the rest of the variables with the correct coords
-                regridder = rgd.create_regridder(
-                    rawseg[self.u],
-                    coords,
-                    self.outfolder
-                    / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
-                )
-                regridded = regridder(
-                    rawseg[
-                        [self.u, self.v, self.eta]
-                        + [self.tracers[i] for i in self.tracers]
-                    ]
                 )
             elif rotational_method == rot.RotationMethod.NO_ROTATION:
                 rotated_u, rotated_v = regridded_u, regridded_v
@@ -3438,6 +3260,9 @@ class segment:
         Type: Python Functions, Source Code
         Web Address: https://github.com/jsimkins2/nwa25
         """
+        if rotational_method == rot.RotationMethod.NO_ROTATION:
+            if not is_rectilinear_hgrid(self.hgrid):
+                raise ValueError("NO_ROTATION method only works with rectilinear grids")
 
         # Establish Coords
         coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
@@ -3495,12 +3320,6 @@ class segment:
 
         ########### Regrid Tidal Velocity ######################
 
-        # Change to t-point coords
-        if rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-            coords = rgd.coords(
-                self.hgrid, self.orientation, self.segment_name, coords_at_t_points=True
-            )
-
         regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords)
         regrid_v = rgd.create_regridder(tpxo_v[["lon", "lat", "vRe"]], coords)
 
@@ -3542,11 +3361,11 @@ class segment:
             # Rotate
             INC -= np.radians(angle.data[np.newaxis, :])
 
-        elif rotational_method == rot.RotationMethod.FRED_AVERAGE:
+        elif rotational_method == rot.RotationMethod.EXPAND_GRID:
 
             # Generate entire hgrid angles using pseudo_hgrid
             self.hgrid["angle_dx_rm6"] = (
-                rot.initialize_grid_rotation_angles_using_pseudo_hgrid(self.hgrid)
+                rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
             )
 
             # Get just boundary angles
@@ -3559,66 +3378,7 @@ class segment:
 
             # Rotate
             INC -= np.radians(degree_angle.data[np.newaxis, :])
-
-        elif rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-
-            # Get hgrid t_points
-            ds = rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
-
-            # Fill hgrid t_points with MOM6 angle calculation
-            self.hgrid["angle_dx_rm6"] = xr.full_like(self.hgrid["angle_dx"], np.nan)
-            self.hgrid["angle_dx_rm6"][ds.t_points_y.values, ds.t_points_x.values] = (
-                rot.initialize_grid_rotation_angle(self.hgrid)
-            )
-
-            # Get boundary angles
-            angle = rgd.coords(
-                self.hgrid,
-                self.orientation,
-                self.segment_name,
-                coords_at_t_points=True,
-                angle_variable_name="angle_dx_rm6",
-            )["angle"]
-
-            # Rotate
-            INC -= np.radians(angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
-
-        # Regrid back to real boundary
-        if rotational_method == rot.RotationMethod.KEITH_DOUBLE_REGRIDDING:
-
-            # Get actual boundary instead of t_point boundary
-            coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
-
-            # Fill data into a 2D dataset b/c though the boundary is 1D, it is curvilinear by def of rotation.
-            ds = xr.Dataset()
-
-            ds["ua"] = ua
-            ds["va"] = va
-            ds["vp"] = (
-                ["constituent", coords.attrs["parallel"] + "_" + self.segment_name],
-                vp,
-            )
-            ds["up"] = (
-                ["constituent", coords.attrs["parallel"] + "_" + self.segment_name],
-                up,
-            )
-
-            # Add empty 1 value secondary dimension for regridding
-            rgd.add_secondary_dimension(ds, "lat", coords, "", to_beginning=True)
-            rgd.add_secondary_dimension(ds, "lon", coords, "", to_beginning=True)
-            rgd.add_secondary_dimension(ds, "ua", coords, "", to_beginning=True)
-            rgd.add_secondary_dimension(ds, "va", coords, "", to_beginning=True)
-            rgd.add_secondary_dimension(ds, "up", coords, "", to_beginning=True)
-            rgd.add_secondary_dimension(ds, "vp", coords, "", to_beginning=True)
-
-            # Regrid
-            regridder = rgd.create_regridder(ds, coords, method="nearest_s2d")
-
-            ua = regridder(ds["ua"])
-            va = regridder(ds["va"])
-            up = regridder(ds["up"]).data
-            vp = regridder(ds["vp"]).data
 
         # Convert to real amplitude and phase.
 
