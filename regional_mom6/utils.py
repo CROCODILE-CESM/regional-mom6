@@ -1,6 +1,7 @@
 import numpy as np
 import logging
 import sys
+import xarray as xr
 
 
 def vecdot(v1, v2):
@@ -318,3 +319,17 @@ def setup_logger(name: str) -> logging.Logger:
         # Add the handler to the logger
         logger.addHandler(handler)
     return logger
+
+
+def is_rectilinear_hgrid(hgrid: xr.Dataset) -> bool:
+    """
+    Check if the hgrid is a rectilinear grid.
+    """
+    if hgrid.x.shape[0] < 2 or hgrid.x.shape[1] < 2:
+        raise ValueError("hgrid must have at least 2 points in each direction")
+    if not np.all(hgrid.y == hgrid.y[:, 0].values[:, np.newaxis]):
+        return False
+    if not np.all(hgrid.x == hgrid.x[0, :].values[np.newaxis, :]):
+        return False
+
+    return True

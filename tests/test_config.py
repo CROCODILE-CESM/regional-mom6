@@ -102,11 +102,12 @@ def test_load_config(tmp_path):
 
     ## Directory where you'll run the experiment from
     run_dir = Path(
+        tmp_path,
         os.path.join(
             tmp_path,
             expt_name,
             "run_files",
-        )
+        ),
     )
     data_path = Path(tmp_path / "data")
     for path in (run_dir, input_dir, data_path):
@@ -126,7 +127,7 @@ def test_load_config(tmp_path):
         mom_input_dir=input_dir,
         toolpath_dir="",
     )
-    path = os.path.join(tmp_path, "testing_config.json")
+    path = tmp_path / "testing_config.json"
     config_expt = expt.write_config_file(path)
     new_expt = rmom6.create_experiment_from_config(
         os.path.join(path), mom_input_folder=tmp_path, mom_run_folder=tmp_path

@@ -36,15 +36,22 @@ from .utils import setup_logger
 regridding_logger = setup_logger(__name__)
 
 
-def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset:
+def coords(
+    hgrid: xr.Dataset,
+    orientation: str,
+    segment_name: str,
+    coords_at_t_points=False,
+    angle_variable_name="angle_dx",
+) -> xr.Dataset:
     """
     This function:
-    Allows us to call the self.coords for use in the xesmf.Regridder in the regrid_tides function. self.coords gives us the subset of the hgrid based on the orientation.
+    Allows us to call the coords for use in the xesmf.Regridder in the regrid_tides function. self.coords gives us the subset of the hgrid based on the orientation.
 
     Args:
         hgrid (xr.Dataset): The hgrid dataset
         orientation (str): The orientation of the boundary
         segment_name (str): The name of the segment
+        coords_at_t_points (bool, optional): Whether to return the boundary t-points instead of the q/u/v of a general boundary for rotation. Defaults to False.
     Returns:
         xr.Dataset: The correct coordinate space for the orientation
 
@@ -57,13 +64,37 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     Web Address: https://github.com/jsimkins2/nwa25
 
     """
+
+    dataset_to_get_coords = None
+
+    if coords_at_t_points:
+        regridding_logger.info("Creating coordinates of the boundary t-points")
+
+        # Calc T Point Info
+        ds = get_hgrid_arakawa_c_points(hgrid, "t")
+
+        tangle_dx = hgrid[angle_variable_name][(ds.t_points_y, ds.t_points_x)]
+        # Assign to dataset
+        dataset_to_get_coords = xr.Dataset(
+            {
+                "x": ds.tlon,
+                "y": ds.tlat,
+                angle_variable_name: (("nyp", "nxp"), tangle_dx.values),
+            },
+            coords={"nyp": ds.nyp, "nxp": ds.nxp},
+        )
+    else:
+        regridding_logger.info("Creating coordinates of the boundary q/u/v points")
+        # Don't have to do anything because this is the actual boundary. t-points are one-index deep and require managing.
+        dataset_to_get_coords = hgrid
+
     # Rename nxp and nyp to locations
     if orientation == "south":
         rcoord = xr.Dataset(
             {
-                "lon": hgrid["x"].isel(nyp=0),
-                "lat": hgrid["y"].isel(nyp=0),
-                "angle": hgrid["angle_dx"].isel(nyp=0),
+                "lon": dataset_to_get_coords["x"].isel(nyp=0),
+                "lat": dataset_to_get_coords["y"].isel(nyp=0),
+                "angle": dataset_to_get_coords[angle_variable_name].isel(nyp=0),
             }
         )
         rcoord = rcoord.rename_dims({"nxp": f"nx_{segment_name}"})
@@ -75,9 +106,9 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     elif orientation == "north":
         rcoord = xr.Dataset(
             {
-                "lon": hgrid["x"].isel(nyp=-1),
-                "lat": hgrid["y"].isel(nyp=-1),
-                "angle": hgrid["angle_dx"].isel(nyp=-1),
+                "lon": dataset_to_get_coords["x"].isel(nyp=-1),
+                "lat": dataset_to_get_coords["y"].isel(nyp=-1),
+                "angle": dataset_to_get_coords[angle_variable_name].isel(nyp=-1),
             }
         )
         rcoord = rcoord.rename_dims({"nxp": f"nx_{segment_name}"})
@@ -87,9 +118,9 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     elif orientation == "west":
         rcoord = xr.Dataset(
             {
-                "lon": hgrid["x"].isel(nxp=0),
-                "lat": hgrid["y"].isel(nxp=0),
-                "angle": hgrid["angle_dx"].isel(nxp=0),
+                "lon": dataset_to_get_coords["x"].isel(nxp=0),
+                "lat": dataset_to_get_coords["y"].isel(nxp=0),
+                "angle": dataset_to_get_coords[angle_variable_name].isel(nxp=0),
             }
         )
         rcoord = rcoord.rename_dims({"nyp": f"ny_{segment_name}"})
@@ -99,9 +130,9 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     elif orientation == "east":
         rcoord = xr.Dataset(
             {
-                "lon": hgrid["x"].isel(nxp=-1),
-                "lat": hgrid["y"].isel(nxp=-1),
-                "angle": hgrid["angle_dx"].isel(nxp=-1),
+                "lon": dataset_to_get_coords["x"].isel(nxp=-1),
+                "lat": dataset_to_get_coords["y"].isel(nxp=-1),
+                "angle": dataset_to_get_coords[angle_variable_name].isel(nxp=-1),
             }
         )
         rcoord = rcoord.rename_dims({"nyp": f"ny_{segment_name}"})
@@ -115,10 +146,64 @@ def coords(hgrid: xr.Dataset, orientation: str, segment_name: str) -> xr.Dataset
     return rcoord
 
 
+def get_hgrid_arakawa_c_points(hgrid: xr.Dataset, point_type="t") -> xr.Dataset:
+    """
+    Get the Arakawa C points from the Hgrid, originally written by Fred (Castruccio) and moved to RM6
+    Parameters
+    ----------
+    hgrid: xr.Dataset
+        The hgrid dataset
+    Returns
+    -------
+    xr.Dataset
+        The specific points x, y, & point indexes
+    """
+    if point_type not in "uvqth":
+        raise ValueError("point_type must be one of 'uvqht'")
+
+    regridding_logger.info("Getting {} points..".format(point_type))
+
+    # Figure out the maths for the offset
+    k = 2
+    kp2 = k // 2
+    offset_one_by_two_y = np.arange(kp2, len(hgrid.x.nyp), k)
+    offset_one_by_two_x = np.arange(kp2, len(hgrid.x.nxp), k)
+    by_two_x = np.arange(0, len(hgrid.x.nxp), k)
+    by_two_y = np.arange(0, len(hgrid.x.nyp), k)
+
+    # T point locations
+    if point_type == "t" or point_type == "h":
+        points = (offset_one_by_two_y, offset_one_by_two_x)
+    # U point locations
+    elif point_type == "u":
+        points = (offset_one_by_two_y, by_two_x)
+    # V point locations
+    elif point_type == "v":
+        points = (by_two_y, offset_one_by_two_x)
+    # Corner point locations
+    elif point_type == "q":
+        points = (by_two_y, by_two_x)
+    else:
+        raise ValueError("Invalid Point Type (u, v, q, or t/h only)")
+
+    point_dataset = xr.Dataset(
+        {
+            "{}lon".format(point_type): hgrid.x[points],
+            "{}lat".format(point_type): hgrid.y[points],
+            "{}_points_y".format(point_type): points[0],
+            "{}_points_x".format(point_type): points[1],
+        }
+    )
+    point_dataset.attrs["description"] = (
+        "Arakawa C {}-points of supplied h-grid".format(point_type)
+    )
+    return point_dataset
+
+
 def create_regridder(
     forcing_variables: xr.Dataset,
     output_grid: xr.Dataset,
-    outfile: Path = Path(".temp"),
+    outfile: Path = None,
     method: str = "bilinear",
 ) -> xe.Regridder:
     """
@@ -229,7 +314,7 @@ def generate_dz(ds: xr.Dataset, z_dim_name: str) -> xr.Dataset:
 
 
 def add_secondary_dimension(
-    ds: xr.Dataset, var: str, coords, segment_name: str
+    ds: xr.Dataset, var: str, coords, segment_name: str, to_beginning=False
 ) -> xr.Dataset:
     """Add the perpendiciular dimension to the dataset, even if it's like one val. It's required.
     Parameters
@@ -242,6 +327,8 @@ def add_secondary_dimension(
         The coordinates from the function coords...
     segment_name : str
         The segment name
+    to_beginning : bool, optional
+        Whether to add the perpendicular dimension to the beginning or to the selected position, by default False
     Returns
     -------
     xr.Dataset
@@ -257,12 +344,20 @@ def add_secondary_dimension(
         "Checking if nz or constituent is in dimensions, then we have to bump the perpendicular dimension up by one"
     )
     insert_behind_by = 0
-    if any(coord.startswith("nz") or coord == "constituent" for coord in ds[var].dims):
-        regridding_logger.debug("Bump it by one")
-        insert_behind_by = 0
+    if not to_beginning:
+
+        if any(
+            coord.startswith("nz") or coord == "constituent" for coord in ds[var].dims
+        ):
+            regridding_logger.debug("Bump it by one")
+            insert_behind_by = 0
+        else:
+            # Missing vertical dim or tidal coord means we don't need to offset the perpendicular
+            insert_behind_by = 1
     else:
-        # Missing vertical dim or tidal coord means we don't need to offset the perpendicular
-        insert_behind_by = 1
+        insert_behind_by = coords.attrs[
+            "axis_to_expand"
+        ]  # Just magic to add dim to the beginning
 
     regridding_logger.debug(f"Expand dimensions")
     ds[var] = ds[var].expand_dims(

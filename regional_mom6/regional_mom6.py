@@ -14,7 +14,7 @@ import shutil
 import os
 import importlib.resources
 import datetime
-from .utils import quadrilateral_areas, ap2ep, ep2ap
+from .utils import quadrilateral_areas, ap2ep, ep2ap, is_rectilinear_hgrid
 import pandas as pd
 from pathlib import Path
 import glob
@@ -22,6 +22,7 @@ from collections import defaultdict
 import json
 import copy
 from . import regridding as rgd
+from . import rotation as rot
 
 warnings.filterwarnings("ignore")
 
@@ -694,7 +695,6 @@ class experiment:
         self.layout = None  # This should be a tuple. Leaving in a dummy 'None' makes it easy to remind the user to provide a value later on.
         self.minimum_depth = minimum_depth  # Minimum depth allowed in bathy file
         self.tidal_constituents = tidal_constituents
-
         if hgrid_type == "from_file":
             try:
                 self.hgrid = xr.open_dataset(self.mom_input_dir / "hgrid.nc")
@@ -1542,6 +1542,7 @@ class experiment:
         varnames,
         arakawa_grid="A",
         boundary_type="rectangular",
+        rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
         This function is a wrapper for `simple_boundary`. Given a list of up to four cardinal directions,
@@ -1592,6 +1593,7 @@ class experiment:
                     orientation
                 ),  # A number to identify the boundary; indexes from 1
                 arakawa_grid=arakawa_grid,
+                rotational_method=rotational_method,
             )
 
     def setup_single_boundary(
@@ -1602,6 +1604,7 @@ class experiment:
         segment_number,
         arakawa_grid="A",
         boundary_type="simple",
+        rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
         Here 'simple' refers to boundaries that are parallel to lines of constant longitude or latitude.
@@ -1642,7 +1645,9 @@ class experiment:
             repeat_year_forcing=self.repeat_year_forcing,
         )
 
-        self.segments[orientation].regrid_velocity_tracers()
+        self.segments[orientation].regrid_velocity_tracers(
+            rotational_method=rotational_method
+        )
 
         print("Done.")
         return
@@ -1653,16 +1658,17 @@ class experiment:
         tpxo_velocity_filepath,
         tidal_constituents="read_from_expt_init",
         boundary_type="rectangle",
+        rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
-        This function:
         We subset our tidal data and generate more boundary files!
 
         Args:
             path_to_td (str): Path to boundary tidal file.
-            tidal_filename: Name of the tpxo product that's used in the tidal_filename. Should be h_{tidal_filename}, u_{tidal_filename}
-            tidal_constiuents: List of tidal constituents to include in the regridding. Default is [0] which is the M2 constituent.
-            boundary_type (Optional[str]): Type of boundary. Currently, only ``'rectangle'`` is supported. Here 'rectangle' refers to boundaries that are parallel to lines of constant longitude or latitude.
+            tidal_filename: Name of the tpxo product that's used in the tidal_filename. Should be h_tidal_filename, u_tidal_filename
+            tidal_constituents: List of tidal constituents to include in the regridding. Default is [0] which is the M2 constituent.
+            boundary_type (str): Type of boundary. Currently, only rectangle is supported. Here rectangle refers to boundaries that are parallel to lines of constant longitude or latitude.
+
         Returns:
             *.nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
 
@@ -1670,7 +1676,7 @@ class experiment:
         This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
          - Converted code for RM6 segment class
          - Implemented Horizontal Subsetting
-         - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, self.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+         - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
 
 
         Original Code was sourced from:
@@ -1749,7 +1755,9 @@ class experiment:
                 seg = self.segments[b]
 
             # Output and regrid tides
-            seg.regrid_tides(tpxo_v, tpxo_u, tpxo_h, times)
+            seg.regrid_tides(
+                tpxo_v, tpxo_u, tpxo_h, times, rotational_method=rotational_method
+            )
             print("Done")
 
     def setup_bathymetry(
@@ -2901,129 +2909,41 @@ class segment:
         self.segment_name = segment_name
         self.repeat_year_forcing = repeat_year_forcing
 
-    @property
-    def coords(self):
-        """
-
-
-        This function:
-        Allows us to call the self.coords for use in the xesmf.Regridder in the regrid_tides function. self.coords gives us the subset of the hgrid based on the orientation.
-
-        Args:
-            None
-        Returns:
-            xr.Dataset: The correct coordinate space for the orientation
-
-        General Description:
-        This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
-         - Converted code for RM6 segment class
-         - Implemented Horizontal Subsetting
-         - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, segment.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
-
-
-        Code adapted from:
-        Author(s): GFDL, James Simkins, Rob Cermak, etc..
-        Year: 2022
-        Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
-        Version: N/A
-        Type: Python Functions, Source Code
-        Web Address: https://github.com/jsimkins2/nwa25
-
-        """
-        # Rename nxp and nyp to locations
-        if self.orientation == "south":
-            rcoord = xr.Dataset(
-                {
-                    "lon": self.hgrid["x"].isel(nyp=0),
-                    "lat": self.hgrid["y"].isel(nyp=0),
-                    "angle": self.hgrid["angle_dx"].isel(nyp=0),
-                }
-            )
-            rcoord = rcoord.rename_dims({"nxp": f"nx_{self.segment_name}"})
-            rcoord.attrs["perpendicular"] = "ny"
-            rcoord.attrs["parallel"] = "nx"
-            rcoord.attrs["axis_to_expand"] = (
-                2  ## Need to keep track of which axis the 'main' coordinate corresponds to when re-adding the 'secondary' axis
-            )
-            rcoord.attrs["locations_name"] = (
-                f"nx_{self.segment_name}"  # Legacy name of nx_... was locations. This provides a clear transform in regrid_tides
-            )
-        elif self.orientation == "north":
-            rcoord = xr.Dataset(
-                {
-                    "lon": self.hgrid["x"].isel(nyp=-1),
-                    "lat": self.hgrid["y"].isel(nyp=-1),
-                    "angle": self.hgrid["angle_dx"].isel(nyp=-1),
-                }
-            )
-            rcoord = rcoord.rename_dims({"nxp": f"nx_{self.segment_name}"})
-            rcoord.attrs["perpendicular"] = "ny"
-            rcoord.attrs["parallel"] = "nx"
-            rcoord.attrs["axis_to_expand"] = 2
-            rcoord.attrs["locations_name"] = f"nx_{self.segment_name}"
-        elif self.orientation == "west":
-            rcoord = xr.Dataset(
-                {
-                    "lon": self.hgrid["x"].isel(nxp=0),
-                    "lat": self.hgrid["y"].isel(nxp=0),
-                    "angle": self.hgrid["angle_dx"].isel(nxp=0),
-                }
-            )
-            rcoord = rcoord.rename_dims({"nyp": f"ny_{self.segment_name}"})
-            rcoord.attrs["perpendicular"] = "nx"
-            rcoord.attrs["parallel"] = "ny"
-            rcoord.attrs["axis_to_expand"] = 3
-            rcoord.attrs["locations_name"] = f"ny_{self.segment_name}"
-        elif self.orientation == "east":
-            rcoord = xr.Dataset(
-                {
-                    "lon": self.hgrid["x"].isel(nxp=-1),
-                    "lat": self.hgrid["y"].isel(nxp=-1),
-                    "angle": self.hgrid["angle_dx"].isel(nxp=-1),
-                }
-            )
-            rcoord = rcoord.rename_dims({"nyp": f"ny_{self.segment_name}"})
-            rcoord.attrs["perpendicular"] = "nx"
-            rcoord.attrs["parallel"] = "ny"
-            rcoord.attrs["axis_to_expand"] = 3
-            rcoord.attrs["locations_name"] = f"ny_{self.segment_name}"
-
-        # Make lat and lon coordinates
-        rcoord = rcoord.assign_coords(lat=rcoord["lat"], lon=rcoord["lon"])
-
-        return rcoord
-
-    def rotate(self, u, v):
+    def rotate(self, u, v, radian_angle):
         # Make docstring
 
         """
         Rotate the velocities to the grid orientation.
-
         Args:
             u (xarray.DataArray): The u-component of the velocity.
             v (xarray.DataArray): The v-component of the velocity.
+            radian_angle (xarray.DataArray): The angle of the grid in RADIANS
 
         Returns:
             Tuple[xarray.DataArray, xarray.DataArray]: The rotated u and v components of the velocity.
         """
 
-        angle = self.coords.angle.values * np.pi / 180
-        u_rot = u * np.cos(angle) - v * np.sin(angle)
-        v_rot = u * np.sin(angle) + v * np.cos(angle)
+        u_rot = u * np.cos(radian_angle) - v * np.sin(radian_angle)
+        v_rot = u * np.sin(radian_angle) + v * np.cos(radian_angle)
         return u_rot, v_rot
 
-    def regrid_velocity_tracers(self):
+    def regrid_velocity_tracers(self, rotational_method=rot.RotationMethod.GIVEN_ANGLE):
         """
         Cut out and interpolate the velocities and tracers
+        Args:
+        rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
         """
-
+        if rotational_method == rot.RotationMethod.NO_ROTATION:
+            if not is_rectilinear_hgrid(self.hgrid):
+                raise ValueError("NO_ROTATION method only works with rectilinear grids")
         rawseg = xr.open_dataset(self.infile, decode_times=False, engine="netcdf4")
+
         coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
         if self.arakawa_grid == "A":
 
             rawseg = rawseg.rename({self.x: "lon", self.y: "lat"})
-            ## In this case velocities and tracers all on same points
+            # In this case velocities and tracers all on same points
             regridder = rgd.create_regridder(
                 rawseg[self.u],
                 coords,
@@ -3036,7 +2956,40 @@ class segment:
                     [self.u, self.v, self.eta] + [self.tracers[i] for i in self.tracers]
                 ]
             )
-            rotated_u, rotated_v = self.rotate(regridded[self.u], regridded[self.v])
+
+            ## Angle Calculation & Rotation
+            if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
+                rotated_u, rotated_v = self.rotate(
+                    regridded[self.u],
+                    regridded[self.v],
+                    radian_angle=np.radians(coords.angle.values),
+                )
+
+            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
+
+                # Recalculate entire hgrid angles
+                self.hgrid["angle_dx_rm6"] = (
+                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
+                )
+
+                # Get just the boundary
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
+
+                # Rotate
+                rotated_u, rotated_v = self.rotate(
+                    regridded[self.u],
+                    regridded[self.v],
+                    radian_angle=np.radians(degree_angle.values),
+                )
+            elif rotational_method == rot.RotationMethod.NO_ROTATION:
+                # Just transfer values
+                rotated_u, rotated_v = regridded[self.u], regridded[self.v]
+
             rotated_ds = xr.Dataset(
                 {
                     self.u: rotated_u,
@@ -3064,9 +3017,33 @@ class segment:
                 rawseg[[self.u, self.v]].rename({self.xq: "lon", self.yq: "lat"})
             )
 
-            velocities_out["u"], velocities_out["v"] = self.rotate(
-                velocities_out["u"], velocities_out["v"]
-            )
+            # See explanation of the rotational methods in the A grid section
+            if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
+                velocities_out["u"], velocities_out["v"] = self.rotate(
+                    velocities_out["u"],
+                    velocities_out["v"],
+                    radian_angle=np.radians(coords.angle.values),
+                )
+            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
+                self.hgrid["angle_dx_rm6"] = (
+                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
+                )
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
+                velocities_out["u"], velocities_out["v"] = self.rotate(
+                    velocities_out["u"],
+                    velocities_out["v"],
+                    radian_angle=np.radians(degree_angle.values),
+                )
+            elif rotational_method == rot.RotationMethod.NO_ROTATION:
+                velocities_out["u"], velocities_out["v"] = (
+                    velocities_out["u"],
+                    velocities_out["v"],
+                )
 
             segment_out = xr.merge(
                 [
@@ -3105,7 +3082,30 @@ class segment:
             regridded_u = regridder_uvelocity(rawseg[[self.u]])
             regridded_v = regridder_vvelocity(rawseg[[self.v]])
 
-            rotated_u, rotated_v = self.rotate(regridded_u[self.u], regridded_v[self.v])
+            # See explanation of the rotational methods in the A grid section
+            if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
+                rotated_u, rotated_v = self.rotate(
+                    regridded_u,
+                    regridded_v,
+                    radian_angle=np.radians(coords.angle.values),
+                )
+            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
+                self.hgrid["angle_dx_rm6"] = (
+                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
+                )
+                degree_angle = rgd.coords(
+                    self.hgrid,
+                    self.orientation,
+                    self.segment_name,
+                    angle_variable_name="angle_dx_rm6",
+                )["angle"]
+                rotated_u, rotated_v = self.rotate(
+                    regridded_u,
+                    regridded_v,
+                    radian_angle=np.radians(degree_angle.values),
+                )
+            elif rotational_method == rot.RotationMethod.NO_ROTATION:
+                rotated_u, rotated_v = regridded_u, regridded_v
             rotated_ds = xr.Dataset(
                 {
                     self.u: rotated_u,
@@ -3137,7 +3137,7 @@ class segment:
         # fill in NaNs
         segment_out = rgd.fill_missing_data(segment_out, self.z)
         segment_out = rgd.fill_missing_data(
-            segment_out, f"{self.coords.attrs['parallel']}_{self.segment_name}"
+            segment_out, f"{coords.attrs['parallel']}_{self.segment_name}"
         )
 
         times = xr.DataArray(
@@ -3194,10 +3194,10 @@ class segment:
         )
 
         # Overwrite the actual lat/lon values in the dimensions, replace with incrementing integers
-        segment_out[f"{self.coords.attrs['parallel']}_{self.segment_name}"] = np.arange(
-            segment_out[f"{self.coords.attrs['parallel']}_{self.segment_name}"].size
+        segment_out[f"{coords.attrs['parallel']}_{self.segment_name}"] = np.arange(
+            segment_out[f"{coords.attrs['parallel']}_{self.segment_name}"].size
         )
-        segment_out[f"{self.coords.attrs['perpendicular']}_{self.segment_name}"] = [0]
+        segment_out[f"{coords.attrs['perpendicular']}_{self.segment_name}"] = [0]
         encoding_dict = {
             "time": {"dtype": "double"},
             f"nx_{self.segment_name}": {
@@ -3222,7 +3222,12 @@ class segment:
         return segment_out, encoding_dict
 
     def regrid_tides(
-        self, tpxo_v, tpxo_u, tpxo_h, times, method="nearest_s2d", periodic=False
+        self,
+        tpxo_v,
+        tpxo_u,
+        tpxo_h,
+        times,
+        rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
         This function:
@@ -3236,6 +3241,7 @@ class segment:
             infile_td (str): Raw Tidal File/Dir
             tpxo_v, tpxo_u, tpxo_h (xarray.Dataset): Specific adjusted for MOM6 tpxo datasets (Adjusted with setup_tides)
             times (pd.DateRange): The start date of our model period
+            rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
         Returns:
             *.nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
 
@@ -3254,8 +3260,11 @@ class segment:
         Type: Python Functions, Source Code
         Web Address: https://github.com/jsimkins2/nwa25
         """
+        if rotational_method == rot.RotationMethod.NO_ROTATION:
+            if not is_rectilinear_hgrid(self.hgrid):
+                raise ValueError("NO_ROTATION method only works with rectilinear grids")
 
-        # Establish Coord
+        # Establish Coords
         coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
         ########## Tidal Elevation: Horizontally interpolate elevation components ############
@@ -3310,8 +3319,9 @@ class segment:
         self.encode_tidal_files_and_output(ds_ap, "tz")
 
         ########### Regrid Tidal Velocity ######################
-        regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords, ".temp")
-        regrid_v = rgd.create_regridder(tpxo_v[["lon", "lat", "vRe"]], coords, ".temp2")
+
+        regrid_u = rgd.create_regridder(tpxo_u[["lon", "lat", "uRe"]], coords)
+        regrid_v = rgd.create_regridder(tpxo_v[["lon", "lat", "vRe"]], coords)
 
         # Interpolate each real and imaginary parts to self.
         uredest = regrid_u(tpxo_u[["lon", "lat", "uRe"]])["uRe"]
@@ -3338,17 +3348,40 @@ class segment:
         ucplex = uredest + 1j * uimdest
         vcplex = vredest + 1j * vimdest
 
-        angle = coords["angle"]  # Fred's grid is in degrees
-
         # Convert complex u and v to ellipse,
         # rotate ellipse from earth-relative to model-relative,
         # and convert ellipse back to amplitude and phase.
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
 
-        INC -= np.radians(angle.data[np.newaxis, :])
+        if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
+
+            # Get user-provided angle
+            angle = coords["angle"]
+
+            # Rotate
+            INC -= np.radians(angle.data[np.newaxis, :])
+
+        elif rotational_method == rot.RotationMethod.EXPAND_GRID:
+
+            # Generate entire hgrid angles using pseudo_hgrid
+            self.hgrid["angle_dx_rm6"] = (
+                rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
+            )
+
+            # Get just boundary angles
+            degree_angle = rgd.coords(
+                self.hgrid,
+                self.orientation,
+                self.segment_name,
+                angle_variable_name="angle_dx_rm6",
+            )["angle"]
+
+            # Rotate
+            INC -= np.radians(degree_angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
 
         # Convert to real amplitude and phase.
+
         ds_ap = xr.Dataset(
             {f"uamp_{self.segment_name}": ua, f"vamp_{self.segment_name}": va}
         )
@@ -3401,7 +3434,7 @@ class segment:
         This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
         - Converted code for RM6 segment class
         - Implemented Horizontal Subsetting
-        - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, self.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+        - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
 
 
         Original Code was sourced from:
