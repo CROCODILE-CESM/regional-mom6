@@ -47,7 +47,7 @@ def test_generate_dz(generate_silly_vt_dataset):
     dz_check = np.full(z.shape, z[1] - z[0])
     assert (
         (dz.values - dz_check) < 0.00001
-    ).all()  # Assert dz is generated correctly (some roundingleniency)
+    ).all()  # Assert dz is generated correctly (some rounding leniency)
 
 
 def test_add_secondary_dimension(get_curvilinear_hgrid, generate_silly_vt_dataset):
@@ -129,9 +129,6 @@ def test_generate_encoding(generate_silly_vt_dataset):
         and "dtype" not in encoding_dict["temp_segment_002"]
     )
     assert encoding_dict["temp_segment_003_nz_"]["dtype"] == "int32"
-
-
-## TBD - Boundary Mask Functions
 
 
 def test_get_boundary_mask(get_curvilinear_hgrid):
