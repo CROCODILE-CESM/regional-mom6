@@ -134,28 +134,6 @@ def dummy_tidal_data():
     return ds_h, ds_u
 
 
-@pytest.fixture(scope="module")
-def dummy_bathymetry_data():
-    latitude_extent = [16.0, 27]
-    longitude_extent = [192, 209]
-
-    bathymetry = np.random.random((100, 100)) * (-100)
-    bathymetry = xr.DataArray(
-        bathymetry,
-        dims=["silly_lat", "silly_lon"],
-        coords={
-            "silly_lat": np.linspace(
-                latitude_extent[0] - 5, latitude_extent[1] + 5, 100
-            ),
-            "silly_lon": np.linspace(
-                longitude_extent[0] - 5, longitude_extent[1] + 5, 100
-            ),
-        },
-    )
-    bathymetry.name = "silly_depth"
-    return bathymetry
-
-
 @pytest.fixture()
 def full_expt_setup(dummy_bathymetry_data, tmp_path):
 

@@ -67,8 +67,9 @@ def test_add_secondary_dimension(get_curvilinear_hgrid, generate_silly_vt_datase
 
     # E/W Boundary
     coords = rgd.coords(hgrid, "east", "segment_003")
-    ds = rgd.add_secondary_dimension(ds, "temp", coords, "segment_003")
-    assert ds["temp"].dims == (
+    ds = generate_silly_vt_dataset
+    ds = rgd.add_secondary_dimension(ds, "v", coords, "segment_003")
+    assert ds["v"].dims == (
         "silly_lat",
         "silly_lon",
         "nx_segment_003",
@@ -77,16 +78,20 @@ def test_add_secondary_dimension(get_curvilinear_hgrid, generate_silly_vt_datase
     )
 
     # Beginning
-    ds = rgd.add_secondary_dimension(ds, "temp", coords, "segment_003")
+    ds = generate_silly_vt_dataset
+    ds = rgd.add_secondary_dimension(
+        ds, "temp", coords, "segment_003", to_beginning=True
+    )
     assert ds["temp"].dims[0] == "nx_segment_003"
 
     # NZ dim E/W Boundary
-    ds["temp"].dims[0] = "nz"
-    ds = rgd.add_secondary_dimension(ds, "temp", coords, "segment_003")
-    assert ds["temp"].dims == (
-        "nz",
+    ds = generate_silly_vt_dataset
+    ds = ds.rename({"silly_depth": "nz"})
+    ds = rgd.add_secondary_dimension(ds, "u", coords, "segment_003")
+    assert ds["u"].dims == (
+        "silly_lat",
         "silly_lon",
-        "silly_depth",
+        "nz",
         "nx_segment_003",
         "time",
     )

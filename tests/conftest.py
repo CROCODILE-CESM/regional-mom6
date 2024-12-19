@@ -31,7 +31,7 @@ def get_curvilinear_hgrid():
 
 
 @pytest.fixture()
-def generate_silly_vt_dataset(tmp_path):
+def generate_silly_vt_dataset():
     latitude_extent = [30, 40]
     longitude_extent = [-80, -70]
     eastern_boundary = xr.Dataset(
