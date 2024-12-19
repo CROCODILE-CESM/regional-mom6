@@ -134,11 +134,130 @@ def test_generate_encoding(generate_silly_vt_dataset):
 ## TBD - Boundary Mask Functions
 
 
-def test_get_boundary_mask(get_curvilinear_hgrid, dummy_bathymetry_data):
+def test_get_boundary_mask(get_curvilinear_hgrid):
     hgrid = get_curvilinear_hgrid
-    bathy_og = get_curvilinear_hgrid
-    bathy = bathy_og.isel(
-        nxp=slice(0, bathy_og.dims["nxp"] // 2), nyp=slice(0, bathy_og.dims["nyp"] // 2)
+    t_points = rgd.get_hgrid_arakawa_c_points(hgrid, "t")
+    bathy = hgrid.isel(nyp=t_points.t_points_y, nxp=t_points.t_points_x)
+    bathy["depth"] = (("t_points_y", "t_points_x"), (np.full(bathy.x.shape, 0)))
+    north_mask = rgd.get_boundary_mask(
+        hgrid,
+        bathy,
+        "north",
+        "segment_002",
+        y_dim_name="t_points_y",
+        x_dim_name="t_points_x",
     )
-    mask = rgd.get_boundary_mask(hgrid, bathy, "north", "segment_002")
-    assert True
+    south_mask = rgd.get_boundary_mask(
+        hgrid,
+        bathy,
+        "south",
+        "segment_001",
+        y_dim_name="t_points_y",
+        x_dim_name="t_points_x",
+    )
+    east_mask = rgd.get_boundary_mask(
+        hgrid,
+        bathy,
+        "east",
+        "segment_003",
+        y_dim_name="t_points_y",
+        x_dim_name="t_points_x",
+    )
+    west_mask = rgd.get_boundary_mask(
+        hgrid,
+        bathy,
+        "west",
+        "segment_004",
+        y_dim_name="t_points_y",
+        x_dim_name="t_points_x",
+    )
+
+    # Check corner property of mask, and ensure each direction is following what we expect
+    for mask in [north_mask, south_mask, east_mask, west_mask]:
+        assert mask[0] == 1 and mask[-1] == 1  # Ensure Corners are oceans
+        assert np.isnan(mask[1:-1]).all()  # Ensure all other points are land
+    assert north_mask.shape == (hgrid.x[-1].shape)  # Ensure mask is the right shape
+    assert south_mask.shape == (hgrid.x[0].shape)  # Ensure mask is the right shape
+    assert east_mask.shape == (hgrid.x[:, -1].shape)  # Ensure mask is the right shape
+    assert west_mask.shape == (hgrid.x[:, 0].shape)  # Ensure mask is the right shape
+
+    ## Now we check if the coast masking is correct (remember we make 3 cells into the coast be ocean)
+    start_ind = 6
+    end_ind = 9
+    for i in range(start_ind, end_ind + 1):
+        bathy["depth"][-1][i] = 15
+    north_mask = rgd.get_boundary_mask(
+        hgrid,
+        bathy,
+        "north",
+        "segment_002",
+        y_dim_name="t_points_y",
+        x_dim_name="t_points_x",
+    )
+    assert north_mask[0] == 1 and north_mask[-1] == 1  # Ensure Corners are oceans
+    assert (
+        north_mask[(((start_ind * 2) + 1) - 3) : (((end_ind * 2) + 1) + 3 + 1)] == 1
+    ).all()  # Ensure coasts are ocean with a 3 cell buffer (remeber mask is on the hgrid boundary) so (6 *2 +2) - 3 -> (9 *2 +2) + 3
+
+    ## On E/W
+    start_ind = 6
+    end_ind = 9
+    for i in range(start_ind, end_ind + 1):
+        bathy["depth"][:, 0][i] = 15
+    west_mask = rgd.get_boundary_mask(
+        hgrid,
+        bathy,
+        "west",
+        "segment_004",
+        y_dim_name="t_points_y",
+        x_dim_name="t_points_x",
+    )
+    assert west_mask[0] == 1 and west_mask[-1] == 1  # Ensure Corners are oceans
+    assert (
+        west_mask[(((start_ind * 2) + 1) - 3) : (((end_ind * 2) + 1) + 3 + 1)] == 1
+    ).all()  # Ensure coasts are ocean with a 3 cell buffer (remeber mask is on the hgrid boundary) so (6 *2 +2) - 3 -> (9 *2 +2) + 3
+
+
+def test_mask_dataset(get_curvilinear_hgrid):
+    hgrid = get_curvilinear_hgrid
+    t_points = rgd.get_hgrid_arakawa_c_points(hgrid, "t")
+    bathy = hgrid.isel(nyp=t_points.t_points_y, nxp=t_points.t_points_x)
+    bathy["depth"] = (("t_points_y", "t_points_x"), (np.full(bathy.x.shape, 0)))
+    ds = hgrid.copy(deep=True)
+    ds = ds.drop_vars(("tile", "area", "y", "x", "angle_dx", "dy", "dx"))
+    ds["temp"] = (("t_points_y", "t_points_x"), (np.full(hgrid.x.shape, 100)))
+    ds["temp"] = ds["temp"].isel(t_points_y=-1)
+    start_ind = 6
+    end_ind = 9
+    for i in range(start_ind, end_ind + 1):
+        bathy["depth"][-1][i] = 15
+
+    ds["temp"][
+        start_ind * 2 + 2
+    ] = (
+        np.nan
+    )  # Add a missing value not in the land mask to make sure it is filled with a dummy value
+    ds["temp"] = ds["temp"].expand_dims("nz_temp", axis=0)
+    ds = rgd.mask_dataset(
+        ds,
+        hgrid,
+        bathy,
+        "north",
+        "segment_002",
+        y_dim_name="t_points_y",
+        x_dim_name="t_points_x",
+    )
+
+    assert (
+        np.isnan(ds["temp"][0][start_ind * 2 + 2]) == False
+    )  # Ensure missing value was filled
+    assert (
+        np.isnan(
+            ds["temp"][0][(((start_ind * 2) + 1) - 3) : (((end_ind * 2) + 1) + 3 + 1)]
+        )
+    ).all() == False  # Ensure data is kept in ocean area
+    assert (
+        np.isnan(ds["temp"][0][1 : (((start_ind * 2) + 1) - 3)])
+    ).all() == True and (
+        np.isnan(ds["temp"][0][(((end_ind * 2) + 1) + 3 + 1) : -1])
+    ).all() == True  # Ensure data is not in land area

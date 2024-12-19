@@ -444,7 +444,13 @@ def generate_layer_thickness(
 
 
 def get_boundary_mask(
-    hgrid: xr.Dataset, bathy: xr.Dataset, side: str, segment_name: str, minimum_depth=0
+    hgrid: xr.Dataset,
+    bathy: xr.Dataset,
+    side: str,
+    segment_name: str,
+    minimum_depth=0,
+    x_dim_name="lonh",
+    y_dim_name="lath",
 ) -> np.ndarray:
     """
     Mask out the boundary conditions based on the bathymetry. We don't want to have boundary conditions on land.
@@ -466,8 +472,15 @@ def get_boundary_mask(
         The boundary mask
     """
 
-    # Hide the bathy as an angle field so we can take advantage of the coords function to get the boundary points.
-    bathy = bathy.rename({"lath": "nyp", "lonh": "nxp"})
+    # Hide the bathy as an hgrid so we can take advantage of the coords function to get the boundary points.
+    try:
+        bathy = bathy.rename({y_dim_name: "nyp", x_dim_name: "nxp"})
+    except:
+        try:
+            bathy = bathy.rename({"ny": "nyp", "nx": "nxp"})
+        except:
+            regridding_logger.error("Could not rename bathy to nyp and nxp")
+            raise ValueError("Please provide the bathymetry x and y dimension names")
 
     # Copy Hgrid
     bathy_2 = hgrid.copy(deep=True)
@@ -495,7 +508,7 @@ def get_boundary_mask(
     boundary_mask = np.full(np.shape(coords(hgrid, side, segment_name).angle), ocean)
 
     ## Mask2DCu is the mask for the u/v points on the hgrid and is set to OBCmaskCy as well...
-    for i in range(len(bathy_2_coords["boundary_depth"]) - 1):
+    for i in range(len(bathy_2_coords["boundary_depth"])):
         if bathy_2_coords["boundary_depth"][i] <= minimum_depth:
             # The points to the left and right of this t-point are land points
             boundary_mask[(i * 2) + 2] = land
@@ -503,10 +516,6 @@ def get_boundary_mask(
                 land  # u/v point on the second level just like mask2DCu
             )
             boundary_mask[(i * 2)] = land
-
-    # Corner Q-points defined as wet
-    boundary_mask[0] = ocean
-    boundary_mask[-1] = ocean
 
     # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
     # Search for intersections
@@ -521,11 +530,15 @@ def get_boundary_mask(
         for i in range(3):
             if beach - 1 - i >= 0:
                 boundary_mask[beach - 1 - i] = ocean
-    for beach in beaches_before:
+    for beach in beaches_after:
         for i in range(3):
-            if beach + 1 + i < len(beaches_before):
+            if beach + 1 + i < len(boundary_mask):
                 boundary_mask[beach + 1 + i] = ocean
     boundary_mask[np.where(boundary_mask == land)] = np.nan
+
+    # Corner Q-points defined as wet
+    boundary_mask[0] = ocean
+    boundary_mask[-1] = ocean
 
     return boundary_mask
 
@@ -536,6 +549,8 @@ def mask_dataset(
     bathymetry: xr.Dataset,
     orientation,
     segment_name: str,
+    y_dim_name="lath",
+    x_dim_name="lonh",
 ) -> xr.Dataset:
     """
     This function masks the dataset to the provided bathymetry. If bathymetry is not provided, it fills all NaNs with 0.
@@ -563,6 +578,8 @@ def mask_dataset(
             orientation,
             segment_name,
             minimum_depth=0,
+            x_dim_name=x_dim_name,
+            y_dim_name=y_dim_name,
         )
         if orientation in ["east", "west"]:
             mask = mask[:, np.newaxis]

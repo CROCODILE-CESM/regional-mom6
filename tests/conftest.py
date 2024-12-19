@@ -23,7 +23,7 @@ def get_curvilinear_hgrid():
     elif os.path.exists(LOCAL_FILE_PATH):
         return xr.open_dataset(LOCAL_FILE_PATH)
 
-    # If neither location contains the file, raise an error
+    # If neither location contains the file, skip test
     else:
         pytest.skip(
             f"Required file 'hgrid.nc' not found in {DOCKER_FILE_PATH} or {LOCAL_FILE_PATH}"
