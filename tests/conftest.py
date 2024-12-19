@@ -1,6 +1,7 @@
 import pytest
 import os
 import xarray as xr
+import numpy as np
 
 # Define the path where the curvilinear hgrid file is expected in the Docker container
 DOCKER_FILE_PATH = "/data/small_curvilinear_hgrid.nc"
@@ -22,8 +23,110 @@ def get_curvilinear_hgrid():
     elif os.path.exists(LOCAL_FILE_PATH):
         return xr.open_dataset(LOCAL_FILE_PATH)
 
-    # If neither location contains the file, raise an error
+    # If neither location contains the file, skip test
     else:
         pytest.skip(
             f"Required file 'hgrid.nc' not found in {DOCKER_FILE_PATH} or {LOCAL_FILE_PATH}"
         )
+
+
+@pytest.fixture()
+def generate_silly_vt_dataset():
+    latitude_extent = [30, 40]
+    longitude_extent = [-80, -70]
+    eastern_boundary = xr.Dataset(
+        {
+            "temp": xr.DataArray(
+                np.random.random((100, 5, 10, 10)),
+                dims=["silly_lat", "silly_lon", "silly_depth", "time"],
+                coords={
+                    "silly_lat": np.linspace(
+                        latitude_extent[0] - 5, latitude_extent[1] + 5, 100
+                    ),
+                    "silly_lon": np.linspace(
+                        longitude_extent[1] - 0.5, longitude_extent[1] + 0.5, 5
+                    ),
+                    "silly_depth": np.linspace(0, 1000, 10),
+                    "time": np.linspace(0, 1000, 10),
+                },
+            ),
+            "eta": xr.DataArray(
+                np.random.random((100, 5, 10)),
+                dims=["silly_lat", "silly_lon", "time"],
+                coords={
+                    "silly_lat": np.linspace(
+                        latitude_extent[0] - 5, latitude_extent[1] + 5, 100
+                    ),
+                    "silly_lon": np.linspace(
+                        longitude_extent[1] - 0.5, longitude_extent[1] + 0.5, 5
+                    ),
+                    "time": np.linspace(0, 1000, 10),
+                },
+            ),
+            "salt": xr.DataArray(
+                np.random.random((100, 5, 10, 10)),
+                dims=["silly_lat", "silly_lon", "silly_depth", "time"],
+                coords={
+                    "silly_lat": np.linspace(
+                        latitude_extent[0] - 5, latitude_extent[1] + 5, 100
+                    ),
+                    "silly_lon": np.linspace(
+                        longitude_extent[1] - 0.5, longitude_extent[1] + 0.5, 5
+                    ),
+                    "silly_depth": np.linspace(0, 1000, 10),
+                    "time": np.linspace(0, 1000, 10),
+                },
+            ),
+            "u": xr.DataArray(
+                np.random.random((100, 5, 10, 10)),
+                dims=["silly_lat", "silly_lon", "silly_depth", "time"],
+                coords={
+                    "silly_lat": np.linspace(
+                        latitude_extent[0] - 5, latitude_extent[1] + 5, 100
+                    ),
+                    "silly_lon": np.linspace(
+                        longitude_extent[1] - 0.5, longitude_extent[1] + 0.5, 5
+                    ),
+                    "silly_depth": np.linspace(0, 1000, 10),
+                    "time": np.linspace(0, 1000, 10),
+                },
+            ),
+            "v": xr.DataArray(
+                np.random.random((100, 5, 10, 10)),
+                dims=["silly_lat", "silly_lon", "silly_depth", "time"],
+                coords={
+                    "silly_lat": np.linspace(
+                        latitude_extent[0] - 5, latitude_extent[1] + 5, 100
+                    ),
+                    "silly_lon": np.linspace(
+                        longitude_extent[1] - 0.5, longitude_extent[1] + 0.5, 5
+                    ),
+                    "silly_depth": np.linspace(0, 1000, 10),
+                    "time": np.linspace(0, 1000, 10),
+                },
+            ),
+        }
+    )
+    return eastern_boundary
+
+
+@pytest.fixture()
+def dummy_bathymetry_data():
+    latitude_extent = [16.0, 27]
+    longitude_extent = [192, 209]
+
+    bathymetry = np.random.random((100, 100)) * (-100)
+    bathymetry = xr.DataArray(
+        bathymetry,
+        dims=["silly_lat", "silly_lon"],
+        coords={
+            "silly_lat": np.linspace(
+                latitude_extent[0] - 5, latitude_extent[1] + 5, 100
+            ),
+            "silly_lon": np.linspace(
+                longitude_extent[0] - 5, longitude_extent[1] + 5, 100
+            ),
+        },
+    )
+    bathymetry.name = "silly_depth"
+    return bathymetry

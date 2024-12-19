@@ -443,9 +443,188 @@ def generate_layer_thickness(
     return ds
 
 
+def get_boundary_mask(
+    hgrid: xr.Dataset,
+    bathy: xr.Dataset,
+    side: str,
+    segment_name: str,
+    minimum_depth=0,
+    x_dim_name="lonh",
+    y_dim_name="lath",
+) -> np.ndarray:
+    """
+    Mask out the boundary conditions based on the bathymetry. We don't want to have boundary conditions on land.
+    Parameters
+    ----------
+    hgrid : xr.Dataset
+        The hgrid dataset
+    bathy : xr.Dataset
+        The bathymetry dataset
+    side : str
+        The side of the boundary, "north", "south", "east", or "west"
+    segment_name : str
+        The segment name
+    minimum_depth : float, optional
+        The minimum depth to consider land, by default 0
+    Returns
+    -------
+    np.Array
+        The boundary mask
+    """
+
+    # Hide the bathy as an hgrid so we can take advantage of the coords function to get the boundary points.
+    try:
+        bathy = bathy.rename({y_dim_name: "nyp", x_dim_name: "nxp"})
+    except:
+        try:
+            bathy = bathy.rename({"ny": "nyp", "nx": "nxp"})
+        except:
+            regridding_logger.error("Could not rename bathy to nyp and nxp")
+            raise ValueError("Please provide the bathymetry x and y dimension names")
+
+    # Copy Hgrid
+    bathy_2 = hgrid.copy(deep=True)
+
+    # Create new depth field
+    bathy_2["depth"] = bathy_2["angle_dx"]
+    bathy_2["depth"][:, :] = np.nan
+
+    # Fill at t_points (what bathy is determined at)
+    ds_t = get_hgrid_arakawa_c_points(hgrid, "t")
+    bathy_2["depth"][ds_t.t_points_y.values, ds_t.t_points_x.values] = bathy.depth
+
+    bathy_2_coords = coords(
+        bathy_2,
+        side,
+        segment_name,
+        angle_variable_name="depth",
+        coords_at_t_points=True,
+    )
+
+    # Get the Boundary Depth
+    bathy_2_coords["boundary_depth"] = bathy_2_coords["angle"]
+    land = 0
+    ocean = 1.0
+    boundary_mask = np.full(np.shape(coords(hgrid, side, segment_name).angle), ocean)
+
+    ## Mask2DCu is the mask for the u/v points on the hgrid and is set to OBCmaskCy as well...
+    for i in range(len(bathy_2_coords["boundary_depth"])):
+        if bathy_2_coords["boundary_depth"][i] <= minimum_depth:
+            # The points to the left and right of this t-point are land points
+            boundary_mask[(i * 2) + 2] = land
+            boundary_mask[(i * 2) + 1] = (
+                land  # u/v point on the second level just like mask2DCu
+            )
+            boundary_mask[(i * 2)] = land
+
+    # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
+    # Search for intersections
+    beaches_before = []
+    beaches_after = []
+    for index in range(1, len(boundary_mask) - 1):
+        if boundary_mask[index - 1] == land and boundary_mask[index] == ocean:
+            beaches_before.append(index)
+        elif boundary_mask[index + 1] == land and boundary_mask[index] == ocean:
+            beaches_after.append(index)
+    for beach in beaches_before:
+        for i in range(3):
+            if beach - 1 - i >= 0:
+                boundary_mask[beach - 1 - i] = ocean
+    for beach in beaches_after:
+        for i in range(3):
+            if beach + 1 + i < len(boundary_mask):
+                boundary_mask[beach + 1 + i] = ocean
+    boundary_mask[np.where(boundary_mask == land)] = np.nan
+
+    # Corner Q-points defined as wet
+    boundary_mask[0] = ocean
+    boundary_mask[-1] = ocean
+
+    return boundary_mask
+
+
+def mask_dataset(
+    ds: xr.Dataset,
+    hgrid: xr.Dataset,
+    bathymetry: xr.Dataset,
+    orientation,
+    segment_name: str,
+    y_dim_name="lath",
+    x_dim_name="lonh",
+) -> xr.Dataset:
+    """
+    This function masks the dataset to the provided bathymetry. If bathymetry is not provided, it fills all NaNs with 0.
+    Parameters
+    ----------
+    ds : xr.Dataset
+        The dataset to mask
+    hgrid : xr.Dataset
+        The hgrid dataset
+    bathymetry : xr.Dataset
+        The bathymetry dataset
+    orientation : str
+        The orientation of the boundary
+    segment_name : str
+        The segment name
+    """
+    ## Add Boundary Mask ##
+    if bathymetry is not None:
+        regridding_logger.info(
+            "Masking to bathymetry. If you don't want this, set bathymetry_path to None in the segment class."
+        )
+        mask = get_boundary_mask(
+            hgrid,
+            bathymetry,
+            orientation,
+            segment_name,
+            minimum_depth=0,
+            x_dim_name=x_dim_name,
+            y_dim_name=y_dim_name,
+        )
+        if orientation in ["east", "west"]:
+            mask = mask[:, np.newaxis]
+        else:
+            mask = mask[np.newaxis, :]
+
+        for var in ds.data_vars.keys():
+
+            ## Compare the dataset to the mask by reducing dims##
+            dataset_reduce_dim = ds[var]
+            for index in range(ds[var].ndim - 2):
+                dataset_reduce_dim = dataset_reduce_dim[0]
+            if orientation in ["east", "west"]:
+                dataset_reduce_dim = dataset_reduce_dim[:, 0]
+                mask_reduce = mask[:, 0]
+            else:
+                dataset_reduce_dim = dataset_reduce_dim[0, :]
+                mask_reduce = mask[0, :]
+            loc_nans_data = np.where(np.isnan(dataset_reduce_dim))
+            loc_nans_mask = np.where(np.isnan(mask_reduce))
+
+            ## Check if all nans in the data are in the mask without corners ##
+            if not np.isin(loc_nans_data[1:-1], loc_nans_mask[1:-1]).all():
+                regridding_logger.warning(
+                    f"NaNs in {var} not in mask. This values are filled with zeroes b/c they could cause issues with boundary conditions."
+                )
+
+                ## Remove Nans if needed ##
+                ds[var] = ds[var].fillna(0)
+
+            ## Apply the mask ##
+            ds[var] = ds[var] * mask
+    else:
+        regridding_logger.warning(
+            "All NaNs filled b/c bathymetry wasn't provided to the function. Add bathymetry_path to the segment class to avoid this"
+        )
+        ds = ds.fillna(
+            0
+        )  # Without bathymetry, we can't assume the nans will be allowed in Boundary Conditions
+    return ds
+
+
 def generate_encoding(
     ds: xr.Dataset, encoding_dict, default_fill_value=netCDF4.default_fillvals["f8"]
-) -> xr.Dataset:
+) -> dict:
     """
     Generate the encoding dictionary for the dataset
     Parameters
