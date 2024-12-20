@@ -21,7 +21,7 @@ This document explains the implementation of MOM6 angle calculation in RM6, whic
 MOM6 only calculates the angle at t-points. For boundary rotation, we need the angle at the boundary, which is q/u/v points. Because we need the points to the left, right, top, and bottom of the point, this method won't work for the boundary.
 
 
-# Convert this method to boundary angles - 3 Options
+## Convert this method to boundary angles - 3 Options
 1. **GIVEN_ANGLE**: Don't calculate the angle and use the user-provided field in the hgrid called "angle_dx"
 2. **EXPAND_GRID**: Calculate another boundary row/column points around the hgrid using simple difference techniques. Use the new points to calculate the angle at the boundaries. This works because we can now access the four points needed to calculate the angle, where previously at boundaries we would be missing at least two. 
 

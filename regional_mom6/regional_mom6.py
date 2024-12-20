@@ -14,7 +14,6 @@ import shutil
 import os
 import importlib.resources
 import datetime
-from .utils import quadrilateral_areas, ap2ep, ep2ap, is_rectilinear_hgrid
 import pandas as pd
 from pathlib import Path
 import glob
@@ -23,7 +22,7 @@ import json
 import copy
 from . import regridding as rgd
 from . import rotation as rot
-from . import rotation as rot
+from .utils import quadrilateral_areas, ap2ep, ep2ap, is_rectilinear_hgrid
 
 warnings.filterwarnings("ignore")
 
@@ -1683,13 +1682,13 @@ class experiment:
             bathymetry_path (str): Path to the bathymetry file. Default is None, in which case the bathymetry file is assumed to be in the input directory.
             rotational_method (str): Method to use for rotating the tidal velocities. Default is 'GIVEN_ANGLE'.
         Returns:
-            *.nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
+            .nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
 
         General Description:
         This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
-         - Converted code for RM6 segment class
-         - Implemented Horizontal Subsetting
-         - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+        - Converted code for RM6 segment class
+        - Implemented Horizontal Subsetting
+        - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
 
 
         Original Code was sourced from:
@@ -3267,7 +3266,7 @@ class segment:
             times (pd.DateRange): The start date of our model period
             rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
         Returns:
-            *.nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
+            .nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
 
         General Description:
         This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
@@ -3451,7 +3450,7 @@ class segment:
             dataset (xarray.Dataset): The processed tidal dataset
             filename (str): The output file name
         Returns:
-            *.nc files: Regridded [FILENAME] files in 'self.outfolder/[filename]_[segmentname].nc'
+            .nc files: Regridded [FILENAME] files in 'self.outfolder/[filename]_[segmentname].nc'
 
         General Description:
         This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:

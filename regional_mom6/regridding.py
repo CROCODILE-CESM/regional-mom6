@@ -4,10 +4,12 @@ Helper Functions to take the user though the regridding of boundary conditions a
 Steps:
 1. Initial Regridding -> Find the boundary of the hgrid, and regrid the forcing variables to that boundary. Call (initial_regridding) and then use the xesmf Regridder with whatever datasets you need.
 2. Work on some data issues
+
     1. For temperature - Make sure it's in Celsius
     2. FILL IN NANS -> this is important for MOM6 (fill_missing_data) -> This diverges between 
-3. For tides, we split the tides into an amplitude and a phase...
-4. In some cases, here is a great place to rotate the velocities to match a curved grid.... (tidal_velocity), velocity is also a good place to do this.
+    
+3. For tides, we split the tides into an amplitude and a phase
+4. In some cases, here is a great place to rotate the velocities to match a curved grid (tidal_velocity), velocity is also a good place to do this.
 5. We then add the time coordinate
 6. For vars that are not just surface variables, we need to add several depth related variables
     1. Add a dz variable in layer thickness
@@ -371,7 +373,7 @@ def vertical_coordinate_encoding(
     ds: xr.Dataset, var: str, segment_name: str, old_vert_coord_name: str
 ) -> xr.Dataset:
     """
-    Rename vertical coordinate to nz_..., then change it to regular increments
+    Rename vertical coordinate to nz[additional-text] then change it to regular increments
 
     Parameters
     ----------
