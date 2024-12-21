@@ -312,6 +312,9 @@ def test_ocean_forcing(
     # max(temp) can be less maximum_temperature_in_C due to re-gridding
     assert np.nanmax(expt.ic_tracers["temp"]) <= maximum_temperature_in_C
 
+    # Seg Fault Issue
+    expt.ic_tracers.close()
+
 
 @pytest.mark.parametrize(
     (
