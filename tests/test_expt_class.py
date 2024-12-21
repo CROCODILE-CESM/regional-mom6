@@ -157,6 +157,7 @@ def test_ocean_forcing(
     tmp_path,
     generate_silly_ic_dataset,
 ):
+    dask.config.set(scheduler="single-threaded")
     mom_run_dir = tmp_path / "rundir"
     mom_input_dir = tmp_path / "inputdir"
     expt = experiment(
@@ -207,6 +208,7 @@ def test_ocean_forcing(
     maximum_temperature_in_C = np.max(temp_dataarray_initial_condition)
     # max(temp) can be less maximum_temperature_in_C due to re-gridding
     assert np.nanmax(expt.ic_tracers["temp"]) <= maximum_temperature_in_C
+    dask.config.set(scheduler=None)
 
 
 @pytest.mark.parametrize(
