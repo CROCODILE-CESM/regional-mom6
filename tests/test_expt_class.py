@@ -8,7 +8,7 @@ from .conftest import (
     generate_temperature_arrays,
     generate_silly_coords,
     number_of_gridpoints,
-    temperature_dataarrays,
+    get_temperature_dataarrays,
 )
 
 ## Note:
@@ -113,7 +113,7 @@ depth = 1000
 
 @pytest.mark.parametrize(
     "temp_dataarray_initial_condition",
-    temperature_dataarrays(
+    get_temperature_dataarrays(
         longitude_extent, latitude_extent, resolution, number_vertical_layers, depth
     ),
 )
@@ -157,7 +157,6 @@ def test_ocean_forcing(
     tmp_path,
     generate_silly_ic_dataset,
 ):
-    dask.config.set(scheduler="single-threaded")
     mom_run_dir = tmp_path / "rundir"
     mom_input_dir = tmp_path / "inputdir"
     expt = experiment(

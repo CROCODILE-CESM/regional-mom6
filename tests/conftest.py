@@ -188,7 +188,7 @@ def dummy_bathymetry_data():
     return bathymetry
 
 
-def temperature_dataarrays(
+def get_temperature_dataarrays(
     longitude_extent, latitude_extent, resolution, number_vertical_layers, depth
 ):
 
