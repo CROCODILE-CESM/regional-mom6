@@ -111,6 +111,62 @@ def generate_silly_vt_dataset():
 
 
 @pytest.fixture()
+def generate_silly_ic_dataset():
+    def _generate_silly_ic_dataset(
+        longitude_extent,
+        latitude_extent,
+        resolution,
+        number_vertical_layers,
+        depth,
+        temp_dataarray_initial_condition,
+    ):
+        nx, ny = number_of_gridpoints(longitude_extent, latitude_extent, resolution)
+        silly_lat, silly_lon, silly_depth = generate_silly_coords(
+            longitude_extent, latitude_extent, resolution, depth, number_vertical_layers
+        )
+
+        dims = ["silly_lat", "silly_lon", "silly_depth"]
+
+        coords = {
+            "silly_lat": silly_lat,
+            "silly_lon": silly_lon,
+            "silly_depth": silly_depth,
+        }
+        # initial condition includes, temp, salt, eta, u, v
+        initial_cond = xr.Dataset(
+            {
+                "eta": xr.DataArray(
+                    np.random.random((ny, nx)),
+                    dims=["silly_lat", "silly_lon"],
+                    coords={
+                        "silly_lat": silly_lat,
+                        "silly_lon": silly_lon,
+                    },
+                ),
+                "temp": temp_dataarray_initial_condition,
+                "salt": xr.DataArray(
+                    np.random.random((ny, nx, number_vertical_layers)),
+                    dims=dims,
+                    coords=coords,
+                ),
+                "u": xr.DataArray(
+                    np.random.random((ny, nx, number_vertical_layers)),
+                    dims=dims,
+                    coords=coords,
+                ),
+                "v": xr.DataArray(
+                    np.random.random((ny, nx, number_vertical_layers)),
+                    dims=dims,
+                    coords=coords,
+                ),
+            }
+        )
+        return initial_cond
+
+    return _generate_silly_ic_dataset
+
+
+@pytest.fixture()
 def dummy_bathymetry_data():
     latitude_extent = [16.0, 27]
     longitude_extent = [192, 209]
@@ -130,3 +186,89 @@ def dummy_bathymetry_data():
     )
     bathymetry.name = "silly_depth"
     return bathymetry
+
+
+def temperature_dataarrays(
+    longitude_extent, latitude_extent, resolution, number_vertical_layers, depth
+):
+
+    silly_lat, silly_lon, silly_depth = generate_silly_coords(
+        longitude_extent, latitude_extent, resolution, depth, number_vertical_layers
+    )
+
+    dims = ["silly_lat", "silly_lon", "silly_depth"]
+
+    coords = {
+        "silly_lat": silly_lat,
+        "silly_lon": silly_lon,
+        "silly_depth": silly_depth,
+    }
+
+    toolpath_dir = "toolpath"
+    hgrid_type = "even_spacing"
+
+    nx, ny = number_of_gridpoints(longitude_extent, latitude_extent, resolution)
+
+    temp_in_C, temp_in_C_masked, temp_in_K, temp_in_K_masked = (
+        generate_temperature_arrays(nx, ny, number_vertical_layers)
+    )
+
+    temp_C = xr.DataArray(temp_in_C, dims=dims, coords=coords)
+    temp_K = xr.DataArray(temp_in_K, dims=dims, coords=coords)
+    temp_C_masked = xr.DataArray(temp_in_C_masked, dims=dims, coords=coords)
+    temp_K_masked = xr.DataArray(temp_in_K_masked, dims=dims, coords=coords)
+
+    maximum_temperature_in_C = np.max(temp_in_C)
+    return [temp_C, temp_C_masked, temp_K, temp_K_masked]
+
+
+def number_of_gridpoints(longitude_extent, latitude_extent, resolution):
+    nx = int((longitude_extent[-1] - longitude_extent[0]) / resolution)
+    ny = int((latitude_extent[-1] - latitude_extent[0]) / resolution)
+
+    return nx, ny
+
+
+def generate_silly_coords(
+    longitude_extent, latitude_extent, resolution, depth, number_vertical_layers
+):
+    nx, ny = number_of_gridpoints(longitude_extent, latitude_extent, resolution)
+
+    horizontal_buffer = 5
+
+    silly_lat = np.linspace(
+        latitude_extent[0] - horizontal_buffer,
+        latitude_extent[1] + horizontal_buffer,
+        ny,
+    )
+    silly_lon = np.linspace(
+        longitude_extent[0] - horizontal_buffer,
+        longitude_extent[1] + horizontal_buffer,
+        nx,
+    )
+    silly_depth = np.linspace(0, depth, number_vertical_layers)
+
+    return silly_lat, silly_lon, silly_depth
+
+
+def generate_temperature_arrays(nx, ny, number_vertical_layers):
+
+    # temperatures close to 0 ᵒC
+    temp_in_C = np.random.randn(ny, nx, number_vertical_layers)
+
+    temp_in_C_masked = np.copy(temp_in_C)
+    if int(ny / 4 + 4) < ny - 1 and int(nx / 3 + 4) < nx + 1:
+        temp_in_C_masked[
+            int(ny / 3) : int(ny / 3 + 5), int(nx) : int(nx / 4 + 4), :
+        ] = float("nan")
+    else:
+        raise ValueError("use bigger domain")
+
+    temp_in_K = np.copy(temp_in_C) + 273.15
+    temp_in_K_masked = np.copy(temp_in_C_masked) + 273.15
+
+    # ensure we didn't mask the minimum temperature
+    if np.nanmin(temp_in_C_masked) == np.min(temp_in_C):
+        return temp_in_C, temp_in_C_masked, temp_in_K, temp_in_K_masked
+    else:
+        return generate_temperature_arrays(nx, ny, number_vertical_layers)
