@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 from regional_mom6 import experiment
 import xarray as xr
+import xesmf as xe
+import dask
 
 ## Note:
 ## When creating test dataarrays we use 'silly' names for coordinates to
@@ -223,6 +225,7 @@ def test_ocean_forcing(
     temp_dataarray_initial_condition,
     tmp_path,
 ):
+    dask.config.set(scheduler="single-threaded")
 
     silly_lat, silly_lon, silly_depth = generate_silly_coords(
         longitude_extent, latitude_extent, resolution, depth, number_vertical_layers
@@ -312,7 +315,7 @@ def test_ocean_forcing(
     # max(temp) can be less maximum_temperature_in_C due to re-gridding
     assert np.nanmax(expt.ic_tracers["temp"]) <= maximum_temperature_in_C
 
-    # Seg Fault Issue
+    # Close experiment tracers explicitly
     expt.ic_tracers.close()
 
 
