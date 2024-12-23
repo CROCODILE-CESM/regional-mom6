@@ -21,7 +21,7 @@ Therefore, to start for the user to use RM6, they should have two (empty or not)
 Depending on the computer used (NCAR-Derecho/Casper doesn't need this), the user may also need to provide a path to FRE_tools. 
 
 To create all these files, RM6 using a class called "Experiment" to hold all of the parameters and functions. Users can follow a few quick steps to setup their cases:
-1.Initalize the experiment object with all the directories and parameters wanted. The initalization can also create the hgrid and vertical coordinate or accept two files called "hgrid.nc" and "vcoord.nc" in the input directory.
+1. Initalize the experiment object with all the directories and parameters wanted. The initalization can also create the hgrid and vertical coordinate or accept two files called "hgrid.nc" and "vcoord.nc" in the input directory.
 2. Call different "setup..." functions to setup all the data needed for the case (bathymetry, initial condition, velocity, tracers, tides).
 3. Finally, call "setup_run_directory" to setup the run files like MOM_override for their cases.
 4. Based on how MOM6 is setup on the computer, there are follow-up steps unique to each situation. RM6 provides all of what the user needs to run MOM6.
