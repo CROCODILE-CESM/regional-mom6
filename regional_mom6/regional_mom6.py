@@ -2872,7 +2872,7 @@ class segment:
         segment_name,
         orientation,
         startdate,
-        bathymetry_path = None,
+        bathymetry_path=None,
         arakawa_grid="A",
         time_units="days",
         repeat_year_forcing=False,
@@ -3230,6 +3230,13 @@ class segment:
                 "dtype": "int32",
             },
         }
+        segment_out = rgd.mask_dataset(
+            segment_out,
+            self.hgrid,
+            self.bathymetry,
+            self.orientation,
+            self.segment_name,
+        )
         encoding_dict = rgd.generate_encoding(
             segment_out,
             encoding_dict,

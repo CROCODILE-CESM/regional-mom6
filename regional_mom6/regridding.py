@@ -520,7 +520,6 @@ def get_boundary_mask(
             )
             boundary_mask[(i * 2)] = land
 
-
     # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
     # Search for intersections
     beaches_before = []
