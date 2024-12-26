@@ -505,8 +505,9 @@ def get_boundary_mask(
 
     # Get the Boundary Depth
     bathy_2_coords["boundary_depth"] = bathy_2_coords["angle"]
-    land = 0
+    land = 0.5
     ocean = 1.0
+    zero_out = 0.0
     boundary_mask = np.full(np.shape(coords(hgrid, side, segment_name).angle), ocean)
 
     ## Mask2DCu is the mask for the u/v points on the hgrid and is set to OBCmaskCy as well...
@@ -518,6 +519,7 @@ def get_boundary_mask(
                 land  # u/v point on the second level just like mask2DCu
             )
             boundary_mask[(i * 2)] = land
+
 
     # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
     # Search for intersections
@@ -531,16 +533,19 @@ def get_boundary_mask(
     for beach in beaches_before:
         for i in range(3):
             if beach - 1 - i >= 0:
-                boundary_mask[beach - 1 - i] = ocean
+                boundary_mask[beach - 1 - i] = zero_out
     for beach in beaches_after:
         for i in range(3):
             if beach + 1 + i < len(boundary_mask):
-                boundary_mask[beach + 1 + i] = ocean
+                boundary_mask[beach + 1 + i] = zero_out
+
     boundary_mask[np.where(boundary_mask == land)] = np.nan
 
-    # Corner Q-points defined as wet
-    boundary_mask[0] = ocean
-    boundary_mask[-1] = ocean
+    # Corner Q-points defined as land should be zeroed out
+    if np.isnan(boundary_mask[0]):
+        boundary_mask[0] = zero_out
+    if np.isnan(boundary_mask[-1] == land):
+        boundary_mask[-1] = zero_out
 
     return boundary_mask
 
@@ -612,7 +617,7 @@ def mask_dataset(
                 ## Remove Nans if needed ##
                 ds[var] = ds[var].fillna(0)
 
-            ## Apply the mask ##
+            ## Apply the mask ## # Multiplication allows us to use 1, 0, and nan in the mask
             ds[var] = ds[var] * mask
     else:
         regridding_logger.warning(
