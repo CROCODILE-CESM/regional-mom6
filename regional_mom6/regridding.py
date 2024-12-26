@@ -543,7 +543,7 @@ def get_boundary_mask(
     # Corner Q-points defined as land should be zeroed out
     if np.isnan(boundary_mask[0]):
         boundary_mask[0] = zero_out
-    if np.isnan(boundary_mask[-1] == land):
+    if np.isnan(boundary_mask[-1]):
         boundary_mask[-1] = zero_out
 
     return boundary_mask
@@ -612,6 +612,18 @@ def mask_dataset(
                 regridding_logger.warning(
                     f"NaNs in {var} not in mask. This values are filled with zeroes b/c they could cause issues with boundary conditions."
                 )
+
+                ## Remove Nans if needed ##
+                ds[var] = ds[var].fillna(0)
+            elif np.isnan(dataset_reduce_dim[0]):  # The corner is nan in the data
+                ds[var] = ds[var].copy()
+                ds[var][..., 0, 0] = 0
+            elif np.isnan(dataset_reduce_dim[-1]):  # The corner is nan in the data
+                ds[var] = ds[var].copy()
+                if orientation in ["east", "west"]:
+                    ds[var][..., -1, 0] = 0
+                else:
+                    ds[var][..., 0, -1] = 0
 
                 ## Remove Nans if needed ##
                 ds[var] = ds[var].fillna(0)
