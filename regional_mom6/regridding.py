@@ -493,6 +493,17 @@ def get_boundary_mask(
 
     # Fill at t_points (what bathy is determined at)
     ds_t = get_hgrid_arakawa_c_points(hgrid, "t")
+
+    # Identify any extra dimension like ntiles
+    extra_dim = None
+    for dim in bathy.dims:
+        if dim not in ["nyp", "nxp"]:
+            extra_dim = dim
+            break
+    # Select the first index along the extra dimension if it exists
+    if extra_dim:
+        bathy = bathy.isel({extra_dim: 0})
+
     bathy_2["depth"][ds_t.t_points_y.values, ds_t.t_points_x.values] = bathy.depth
 
     bathy_2_coords = coords(
