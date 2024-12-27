@@ -470,11 +470,13 @@ def get_boundary_mask(
         The minimum depth to consider land, by default 0
     Returns
     -------
-    np.Array
+    np.ndarray
         The boundary mask
     """
 
     # Hide the bathy as an hgrid so we can take advantage of the coords function to get the boundary points.
+
+    # First rename bathy dims to nyp and nxp
     try:
         bathy = bathy.rename({y_dim_name: "nyp", x_dim_name: "nxp"})
     except:
@@ -485,11 +487,11 @@ def get_boundary_mask(
             raise ValueError("Please provide the bathymetry x and y dimension names")
 
     # Copy Hgrid
-    bathy_2 = hgrid.copy(deep=True)
+    bathy_as_hgrid = hgrid.copy(deep=True)
 
     # Create new depth field
-    bathy_2["depth"] = bathy_2["angle_dx"]
-    bathy_2["depth"][:, :] = np.nan
+    bathy_as_hgrid["depth"] = bathy_as_hgrid["angle_dx"]
+    bathy_as_hgrid["depth"][:, :] = np.nan
 
     # Fill at t_points (what bathy is determined at)
     ds_t = get_hgrid_arakawa_c_points(hgrid, "t")
@@ -504,26 +506,32 @@ def get_boundary_mask(
     if extra_dim:
         bathy = bathy.isel({extra_dim: 0})
 
-    bathy_2["depth"][ds_t.t_points_y.values, ds_t.t_points_x.values] = bathy.depth
+    bathy_as_hgrid["depth"][
+        ds_t.t_points_y.values, ds_t.t_points_x.values
+    ] = bathy.depth
 
-    bathy_2_coords = coords(
-        bathy_2,
+    bathy_as_hgrid_coords = coords(
+        bathy_as_hgrid,
         side,
         segment_name,
         angle_variable_name="depth",
         coords_at_t_points=True,
     )
 
-    # Get the Boundary Depth
-    bathy_2_coords["boundary_depth"] = bathy_2_coords["angle"]
+    # Get the Boundary Depth -> we're done with the hgrid now
+    bathy_as_hgrid_coords["boundary_depth"] = bathy_as_hgrid_coords["angle"]
+
+    # Mask Fill Values
     land = 0.5
     ocean = 1.0
     zero_out = 0.0
+
+    # Create Mask
     boundary_mask = np.full(np.shape(coords(hgrid, side, segment_name).angle), ocean)
 
-    ## Mask2DCu is the mask for the u/v points on the hgrid and is set to OBCmaskCy as well...
-    for i in range(len(bathy_2_coords["boundary_depth"])):
-        if bathy_2_coords["boundary_depth"][i] <= minimum_depth:
+    # Fill with MOM6 version of mask
+    for i in range(len(bathy_as_hgrid_coords["boundary_depth"])):
+        if bathy_as_hgrid_coords["boundary_depth"][i] <= minimum_depth:
             # The points to the left and right of this t-point are land points
             boundary_mask[(i * 2) + 2] = land
             boundary_mask[(i * 2) + 1] = (
@@ -531,31 +539,35 @@ def get_boundary_mask(
             )
             boundary_mask[(i * 2)] = land
 
+    # Land points that can't be NaNs: Corners & 3 points at the coast
+
     # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
     # Search for intersections
-    beaches_before = []
-    beaches_after = []
+    coasts_lower_index = []
+    coasts_higher_index = []
     for index in range(1, len(boundary_mask) - 1):
         if boundary_mask[index - 1] == land and boundary_mask[index] == ocean:
-            beaches_before.append(index)
+            coasts_lower_index.append(index)
         elif boundary_mask[index + 1] == land and boundary_mask[index] == ocean:
-            beaches_after.append(index)
-    for beach in beaches_before:
-        for i in range(3):
-            if beach - 1 - i >= 0:
-                boundary_mask[beach - 1 - i] = zero_out
-    for beach in beaches_after:
-        for i in range(3):
-            if beach + 1 + i < len(boundary_mask):
-                boundary_mask[beach + 1 + i] = zero_out
+            coasts_higher_index.append(index)
 
-    boundary_mask[np.where(boundary_mask == land)] = np.nan
+    # Remove 3 land points from the coast, and make them zeroed out real values
+    for i in range(3):
+        for coast in coasts_lower_index:
+            if coast - 1 - i >= 0:
+                boundary_mask[coast - 1 - i] = zero_out
+        for coast in coasts_higher_index:
+            if coast + 1 + i < len(boundary_mask):
+                boundary_mask[coast + 1 + i] = zero_out
 
     # Corner Q-points defined as land should be zeroed out
-    if np.isnan(boundary_mask[0]):
+    if boundary_mask[0] == land:
         boundary_mask[0] = zero_out
-    if np.isnan(boundary_mask[-1]):
+    if boundary_mask[-1] == land:
         boundary_mask[-1] = zero_out
+
+    # Convert land points to nans
+    boundary_mask[np.where(boundary_mask == land)] = np.nan
 
     return boundary_mask
 
