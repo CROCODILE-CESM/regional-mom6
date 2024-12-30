@@ -238,9 +238,11 @@ def create_regridder(
     return regridder
 
 
-def fill_missing_data(ds: xr.Dataset, z_dim_name: str) -> xr.Dataset:
+def fill_missing_data(
+    ds: xr.Dataset, xdim: str = "locations", zdim: str = "z", fill: str = "b"
+) -> xr.Dataset:
     """
-    Fill in missing values with forward fill along the z dimension (We can make this more elaborate with time.... The original RM6 fill was different)
+    Fill in missing values, taken from GFDL NWA 25 Repo
     Parameters
     ----------
     ds : xr.Dataset
@@ -252,11 +254,14 @@ def fill_missing_data(ds: xr.Dataset, z_dim_name: str) -> xr.Dataset:
     xr.Dataset
         The filled in dataset
     """
-    regridding_logger.info("Forward filling in missing data along z-dim")
-    ds = ds.ffill(
-        dim=z_dim_name, limit=None
-    )  # This fills in the nans with the forward fill along the z dimension with an unlimited num of nans
-    return ds
+    regridding_logger.info("Filling in missing data horizontally, then vertically")
+    if fill == "f":
+        filled = ds.ffill(dim=xdim, limit=None)
+    elif fill == "b":
+        filled = ds.bfill(dim=xdim, limit=None)
+    if zdim is not None:
+        filled = filled.ffill(dim=zdim, limit=None).fillna(0)
+    return filled
 
 
 def add_or_update_time_dim(ds: xr.Dataset, times) -> xr.Dataset:
@@ -453,6 +458,7 @@ def get_boundary_mask(
     minimum_depth=0,
     x_dim_name="lonh",
     y_dim_name="lath",
+    add_land_exceptions = True
 ) -> np.ndarray:
     """
     Mask out the boundary conditions based on the bathymetry. We don't want to have boundary conditions on land.
@@ -468,6 +474,8 @@ def get_boundary_mask(
         The segment name
     minimum_depth : float, optional
         The minimum depth to consider land, by default 0
+    add_land_exceptions : bool
+        Add the corners and 3 coast point exceptions
     Returns
     -------
     np.ndarray
@@ -539,32 +547,33 @@ def get_boundary_mask(
             )
             boundary_mask[(i * 2)] = land
 
+    if add_land_exceptions:
     # Land points that can't be NaNs: Corners & 3 points at the coast
 
     # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
     # Search for intersections
-    coasts_lower_index = []
-    coasts_higher_index = []
-    for index in range(1, len(boundary_mask) - 1):
-        if boundary_mask[index - 1] == land and boundary_mask[index] == ocean:
-            coasts_lower_index.append(index)
-        elif boundary_mask[index + 1] == land and boundary_mask[index] == ocean:
-            coasts_higher_index.append(index)
+        coasts_lower_index = []
+        coasts_higher_index = []
+        for index in range(1, len(boundary_mask) - 1):
+            if boundary_mask[index - 1] == land and boundary_mask[index] == ocean:
+                coasts_lower_index.append(index)
+            elif boundary_mask[index + 1] == land and boundary_mask[index] == ocean:
+                coasts_higher_index.append(index)
 
-    # Remove 3 land points from the coast, and make them zeroed out real values
-    for i in range(3):
-        for coast in coasts_lower_index:
-            if coast - 1 - i >= 0:
-                boundary_mask[coast - 1 - i] = zero_out
-        for coast in coasts_higher_index:
-            if coast + 1 + i < len(boundary_mask):
-                boundary_mask[coast + 1 + i] = zero_out
+        # Remove 3 land points from the coast, and make them zeroed out real values
+        for i in range(3):
+            for coast in coasts_lower_index:
+                if coast - 1 - i >= 0:
+                    boundary_mask[coast - 1 - i] = zero_out
+            for coast in coasts_higher_index:
+                if coast + 1 + i < len(boundary_mask):
+                    boundary_mask[coast + 1 + i] = zero_out
 
-    # Corner Q-points defined as land should be zeroed out
-    if boundary_mask[0] == land:
-        boundary_mask[0] = zero_out
-    if boundary_mask[-1] == land:
-        boundary_mask[-1] = zero_out
+        # Corner Q-points defined as land should be zeroed out
+        if boundary_mask[0] == land:
+            boundary_mask[0] = zero_out
+        if boundary_mask[-1] == land:
+            boundary_mask[-1] = zero_out
 
     # Convert land points to nans
     boundary_mask[np.where(boundary_mask == land)] = np.nan
@@ -580,6 +589,7 @@ def mask_dataset(
     segment_name: str,
     y_dim_name="lath",
     x_dim_name="lonh",
+    add_land_exceptions = True
 ) -> xr.Dataset:
     """
     This function masks the dataset to the provided bathymetry. If bathymetry is not provided, it fills all NaNs with 0.
@@ -595,6 +605,8 @@ def mask_dataset(
         The orientation of the boundary
     segment_name : str
         The segment name
+    add_land_exceptions : bool
+        To add the corner and 3 point coast exception
     """
     ## Add Boundary Mask ##
     if bathymetry is not None:
@@ -609,6 +621,7 @@ def mask_dataset(
             minimum_depth=0,
             x_dim_name=x_dim_name,
             y_dim_name=y_dim_name,
+            add_land_exceptions = add_land_exceptions
         )
         if orientation in ["east", "west"]:
             mask = mask[:, np.newaxis]

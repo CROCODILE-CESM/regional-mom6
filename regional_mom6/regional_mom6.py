@@ -1559,7 +1559,7 @@ class experiment:
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the boundary forcing.
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             boundary_type (Optional[str]): Type of box around region. Currently, only ``'rectangular'`` is supported.
-            bathymetry_path (Optional[str]): Path to the bathymetry file. Default is None, in which case the bathymetry file is assumed to be in the input directory.
+            bathymetry_path (Optional[str]): Path to the bathymetry file. Default is None, in which case the BC is not masked.
             rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is 'GIVEN_ANGLE'.
         """
         if boundary_type != "rectangular":
@@ -1581,8 +1581,6 @@ class experiment:
             raise ValueError(
                 "This method only supports up to four boundaries. To set up more complex boundary shapes you can manually call the 'simple_boundary' method for each boundary."
             )
-        if bathymetry_path is None:
-            bathymetry_path = self.mom_input_dir / "bathymetry.nc"
 
         # Now iterate through our four boundaries
         for orientation in self.boundaries:
@@ -1631,7 +1629,7 @@ class experiment:
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the boundary forcing.
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             boundary_type (Optional[str]): Type of boundary. Currently, only ``'simple'`` is supported. Here 'simple' refers to boundaries that are parallel to lines of constant longitude or latitude.
-            bathymetry_path (Optional[str]): Path to the bathymetry file. Default is None, in which case the bathymetry file is assumed to be in the input directory.
+            bathymetry_path (Optional[str]): Path to the bathymetry file. Default is None, in which case the BC is not masked
             rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is 'GIVEN_ANGLE'.
         """
 
@@ -1679,7 +1677,7 @@ class experiment:
             tidal_filename: Name of the tpxo product that's used in the tidal_filename. Should be h_tidal_filename, u_tidal_filename
             tidal_constituents: List of tidal constituents to include in the regridding. Default is [0] which is the M2 constituent.
             boundary_type (str): Type of boundary. Currently, only rectangle is supported. Here rectangle refers to boundaries that are parallel to lines of constant longitude or latitude.
-            bathymetry_path (str): Path to the bathymetry file. Default is None, in which case the bathymetry file is assumed to be in the input directory.
+            bathymetry_path (str): Path to the bathymetry file. Default is None, in which case the BC is not masked
             rotational_method (str): Method to use for rotating the tidal velocities. Default is 'GIVEN_ANGLE'.
         Returns:
             .nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
@@ -1705,8 +1703,6 @@ class experiment:
             )
         if tidal_constituents != "read_from_expt_init":
             self.tidal_constituents = tidal_constituents
-        if bathymetry_path is None:
-            bathymetry_path = self.mom_input_dir / "bathymetry.nc"
         tpxo_h = (
             xr.open_dataset(Path(tpxo_elevation_filepath))
             .rename({"lon_z": "lon", "lat_z": "lat", "nc": "constituent"})
@@ -1751,23 +1747,19 @@ class experiment:
             print("Processing {} boundary...".format(b), end="")
 
             # If the GLORYS ocean_state has already created segments, we don't create them again.
-            if b not in self.segments.keys():  # I.E. not set yet
-                seg = segment(
-                    hgrid=self.hgrid,
-                    bathymetry_path=bathymetry_path,
-                    infile=None,  # location of raw boundary
-                    outfolder=self.mom_input_dir,
-                    varnames=None,
-                    segment_name="segment_{:03d}".format(
-                        self.find_MOM6_rectangular_orientation(b)
-                    ),
-                    orientation=b,  # orienataion
-                    startdate=self.date_range[0],
-                    repeat_year_forcing=self.repeat_year_forcing,
-                )
-                self.segments[b] = seg
-            else:
-                seg = self.segments[b]
+            seg = segment(
+                hgrid=self.hgrid,
+                bathymetry_path=bathymetry_path,
+                infile=None,  # location of raw boundary
+                outfolder=self.mom_input_dir,
+                varnames=None,
+                segment_name="segment_{:03d}".format(
+                    self.find_MOM6_rectangular_orientation(b)
+                ),
+                orientation=b,  # orienataion
+                startdate=self.date_range[0],
+                repeat_year_forcing=self.repeat_year_forcing,
+            )
 
             # Output and regrid tides
             seg.regrid_tides(
@@ -2528,6 +2520,19 @@ class experiment:
             0,
         ]
         nml.write(self.mom_run_dir / "input.nml", force=True)
+
+        # Edit Diag Table Date
+        # Read the file
+        with open(self.mom_run_dir / "diag_table", "r") as file:
+            lines = file.readlines()
+
+        # The date is the second line
+        lines[1] = self.date_range[0].strftime("%Y %-m %-d %-H %-M %-S\n")
+
+        # Write the file
+        with open(self.mom_run_dir / "diag_table", "w") as file:
+            file.writelines(lines)
+
         return
 
     def change_MOM_parameter(
@@ -2969,6 +2974,7 @@ class segment:
                 coords,
                 self.outfolder
                 / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
+                method="nearest_s2d",
             )
 
             regridded = regridder(
@@ -3143,9 +3149,10 @@ class segment:
 
         ## segment out now contains our interpolated boundary.
         ## Now, we need to fix up all the metadata and save
+        segment_out = segment_out.rename(
+            {"lon": f"lon_{self.segment_name}", "lat": f"lat_{self.segment_name}"}
+        )
 
-        del segment_out["lon"]
-        del segment_out["lat"]
         ## Convert temperatures to celsius # use pint
         if (
             np.nanmin(segment_out[self.tracers["temp"]].isel({self.time: 0, self.z: 0}))
@@ -3155,9 +3162,11 @@ class segment:
             segment_out[self.tracers["temp"]].attrs["units"] = "degrees Celsius"
 
         # fill in NaNs
-        segment_out = rgd.fill_missing_data(segment_out, self.z)
+        # segment_out = rgd.fill_missing_data(segment_out, self.z)
         segment_out = rgd.fill_missing_data(
-            segment_out, f"{coords.attrs['parallel']}_{self.segment_name}"
+            segment_out,
+            xdim=f"{coords.attrs['parallel']}_{self.segment_name}",
+            zdim=self.z,
         )
 
         times = xr.DataArray(
@@ -3240,7 +3249,7 @@ class segment:
         encoding_dict = rgd.generate_encoding(
             segment_out,
             encoding_dict,
-            default_fill_value=netCDF4.default_fillvals["f8"],
+            default_fill_value=1.0e20,
         )
 
         segment_out.load().to_netcdf(
@@ -3312,11 +3321,11 @@ class segment:
         # Fill missing data.
         # Need to do this first because complex would get converted to real
         redest = rgd.fill_missing_data(
-            redest, f"{coords.attrs['parallel']}_{self.segment_name}"
+            redest, xdim=f"{coords.attrs['parallel']}_{self.segment_name}", zdim=None
         )
         redest = redest["hRe"]
         imdest = rgd.fill_missing_data(
-            imdest, f"{coords.attrs['parallel']}_{self.segment_name}"
+            imdest, xdim=f"{coords.attrs['parallel']}_{self.segment_name}", zdim=None
         )
         imdest = imdest["hIm"]
 
@@ -3362,16 +3371,16 @@ class segment:
         # Fill missing data.
         # Need to do this first because complex would get converted to real
         uredest = rgd.fill_missing_data(
-            uredest, f"{coords.attrs['parallel']}_{self.segment_name}"
+            uredest, xdim=f"{coords.attrs['parallel']}_{self.segment_name}", zdim=None
         )
         uimdest = rgd.fill_missing_data(
-            uimdest, f"{coords.attrs['parallel']}_{self.segment_name}"
+            uimdest, xdim=f"{coords.attrs['parallel']}_{self.segment_name}", zdim=None
         )
         vredest = rgd.fill_missing_data(
-            vredest, f"{coords.attrs['parallel']}_{self.segment_name}"
+            vredest, xdim=f"{coords.attrs['parallel']}_{self.segment_name}", zdim=None
         )
         vimdest = rgd.fill_missing_data(
-            vimdest, f"{coords.attrs['parallel']}_{self.segment_name}"
+            vimdest, xdim=f"{coords.attrs['parallel']}_{self.segment_name}", zdim=None
         )
 
         # Convert to complex, remaining separate for u and v.
@@ -3437,7 +3446,7 @@ class segment:
 
         # Some things may have become missing during the transformation
         ds_ap = rgd.fill_missing_data(
-            ds_ap, f"{coords.attrs['parallel']}_{self.segment_name}"
+            ds_ap, xdim=f"{coords.attrs['parallel']}_{self.segment_name}", zdim=None
         )
 
         self.encode_tidal_files_and_output(ds_ap, "tu")
@@ -3503,9 +3512,7 @@ class segment:
             f"lon_{self.segment_name}": dict(dtype="float64", _FillValue=1.0e20),
             f"lat_{self.segment_name}": dict(dtype="float64", _FillValue=1.0e20),
         }
-        encoding = rgd.generate_encoding(
-            ds, encoding, default_fill_value=netCDF4.default_fillvals["f8"]
-        )
+        encoding = rgd.generate_encoding(ds, encoding, default_fill_value=1.0e20)
 
         ## Export Files ##
         ds.to_netcdf(
