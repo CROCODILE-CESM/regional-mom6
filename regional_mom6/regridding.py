@@ -458,7 +458,7 @@ def get_boundary_mask(
     minimum_depth=0,
     x_dim_name="lonh",
     y_dim_name="lath",
-    add_land_exceptions = True
+    add_land_exceptions=True,
 ) -> np.ndarray:
     """
     Mask out the boundary conditions based on the bathymetry. We don't want to have boundary conditions on land.
@@ -548,10 +548,10 @@ def get_boundary_mask(
             boundary_mask[(i * 2)] = land
 
     if add_land_exceptions:
-    # Land points that can't be NaNs: Corners & 3 points at the coast
+        # Land points that can't be NaNs: Corners & 3 points at the coast
 
-    # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
-    # Search for intersections
+        # Looks like in the boundary between land and ocean - in NWA for example - we basically need to remove 3 points closest to ocean as a buffer.
+        # Search for intersections
         coasts_lower_index = []
         coasts_higher_index = []
         for index in range(1, len(boundary_mask) - 1):
@@ -589,7 +589,7 @@ def mask_dataset(
     segment_name: str,
     y_dim_name="lath",
     x_dim_name="lonh",
-    add_land_exceptions = True
+    add_land_exceptions=True,
 ) -> xr.Dataset:
     """
     This function masks the dataset to the provided bathymetry. If bathymetry is not provided, it fills all NaNs with 0.
@@ -621,7 +621,7 @@ def mask_dataset(
             minimum_depth=0,
             x_dim_name=x_dim_name,
             y_dim_name=y_dim_name,
-            add_land_exceptions = add_land_exceptions
+            add_land_exceptions=add_land_exceptions,
         )
         if orientation in ["east", "west"]:
             mask = mask[:, np.newaxis]
