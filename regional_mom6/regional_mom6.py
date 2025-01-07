@@ -1114,6 +1114,7 @@ class experiment:
         varnames,
         arakawa_grid="A",
         vcoord_type="height",
+        rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
         Reads the initial condition from files in ``ic_path``, interpolates to the
@@ -1127,6 +1128,7 @@ class experiment:
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             vcoord_type (Optional[str]): The type of vertical coordinate used in the forcing files.
                 Either ``'height'`` or ``'thickness'``.
+            rotational_method (Optional[RotationMethod]): The method used to rotate the velocities.
         """
 
         # Remove time dimension if present in the IC.
@@ -1249,28 +1251,6 @@ class experiment:
                     + "Terminating!"
                 )
 
-        ## Construct the xq, yh and xh, yq grids
-        ugrid = (
-            self.hgrid[["x", "y"]]
-            .isel(nxp=slice(None, None, 2), nyp=slice(1, None, 2))
-            .rename({"x": "lon", "y": "lat"})
-            .set_coords(["lat", "lon"])
-        )
-        vgrid = (
-            self.hgrid[["x", "y"]]
-            .isel(nxp=slice(1, None, 2), nyp=slice(None, None, 2))
-            .rename({"x": "lon", "y": "lat"})
-            .set_coords(["lat", "lon"])
-        )
-
-        ## Construct the cell centre grid for tracers (xh, yh).
-        tgrid = (
-            self.hgrid[["x", "y"]]
-            .isel(nxp=slice(1, None, 2), nyp=slice(1, None, 2))
-            .rename({"x": "lon", "y": "lat", "nxp": "nx", "nyp": "ny"})
-            .set_coords(["lat", "lon"])
-        )
-
         # NaNs might be here from the land mask of the model that the IC has come from.
         # If they're not removed then the coastlines from this other grid will be retained!
         # The land mask comes from the bathymetry file, so we don't need NaNs
@@ -1309,39 +1289,75 @@ class experiment:
             .ffill("lat")
             .bfill("lat")
         )
+        renamed_hgrid = self.hgrid  # This is not a deep copy
+        renamed_hgrid["lon"] = renamed_hgrid["x"]
+        renamed_hgrid["lat"] = renamed_hgrid["y"]
+        tgrid = (
+            rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
+            .rename({"tlon": "lon", "tlat": "lat", "nxp": "nx", "nyp": "ny"})
+            .set_coords(["lat", "lon"])
+        )
 
         ## Make our three horizontal regridders
-        regridder_u = xe.Regridder(
-            ic_raw_u,
-            ugrid,
-            "bilinear",
-        )
-        regridder_v = xe.Regridder(
-            ic_raw_v,
-            vgrid,
-            "bilinear",
-        )
 
-        regridder_t = xe.Regridder(
-            ic_raw_tracers,
-            tgrid,
-            "bilinear",
+        regridder_u = rgd.create_regridder(
+            ic_raw_u, renamed_hgrid, locstream_out=False, method="bilinear"
         )
+        regridder_v = rgd.create_regridder(
+            ic_raw_v, renamed_hgrid, locstream_out=False, method="bilinear"
+        )
+        regridder_t = rgd.create_regridder(
+            ic_raw_tracers, tgrid, locstream_out=False, method="bilinear"
+        )  # Doesn't need to be rotated, so we can regrid to just tracers
 
+        # ugrid= rgd.get_hgrid_arakawa_c_points(self.hgrid, "u").rename({"ulon": "lon", "ulat": "lat"}).set_coords(["lat", "lon"])
+        # vgrid = rgd.get_hgrid_arakawa_c_points(self.hgrid, "v").rename({"vlon": "lon", "vlat": "lat"}).set_coords(["lat", "lon"])
+
+        ## Construct the cell centre grid for tracers (xh, yh).
         print("INITIAL CONDITIONS")
 
         ## Regrid all fields horizontally.
 
         print("Regridding Velocities... ", end="")
+        regridded_u = regridder_u(ic_raw_u)
+        regridded_v = regridder_v(ic_raw_v)
+        if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
+            rotated_u, rotated_v = segment.rotate(
+                None,
+                regridded_u,
+                regridded_v,
+                radian_angle=np.radians(self.hgrid.angle_dx.values),
+            )
+        elif rotational_method == rot.RotationMethod.EXPAND_GRID:
+            self.hgrid["angle_dx_rm6"] = (
+                rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
+            )
+            rotated_u, rotated_v = segment.rotate(
+                regridded_u,
+                regridded_v,
+                radian_angle=np.radians(self.hgrid.angle_dx_rm6.values),
+            )
+        elif rotational_method == rot.RotationMethod.NO_ROTATION:
+            rotated_u, rotated_v = regridded_u, regridded_v
+        # Slice the velocites to the u and v grid.
+        u_points = rgd.get_hgrid_arakawa_c_points(self.hgrid, "u")
+        v_points = rgd.get_hgrid_arakawa_c_points(self.hgrid, "v")
+        rotated_v = rotated_v[:, v_points.v_points_y.values, v_points.v_points_x.values]
+        rotated_u = rotated_u[:, u_points.u_points_y.values, u_points.u_points_x.values]
+        rotated_u["lon"] = u_points.ulon
+        rotated_u["lat"] = u_points.ulat
+        rotated_v["lon"] = v_points.vlon
+        rotated_v["lat"] = v_points.vlat
 
+        # Merge Vels
         vel_out = xr.merge(
             [
-                regridder_u(ic_raw_u)
-                .rename({"lon": "xq", "lat": "yh", "nyp": "ny", varnames["zl"]: "zl"})
-                .rename("u"),
-                regridder_v(ic_raw_v)
-                .rename({"lon": "xh", "lat": "yq", "nxp": "nx", varnames["zl"]: "zl"})
-                .rename("v"),
+                rotated_u.rename(
+                    {"lon": "xq", "lat": "yh", "nyp": "ny", varnames["zl"]: "zl"}
+                ).rename("u"),
+                rotated_v.rename(
+                    {"lon": "xh", "lat": "yq", "nxp": "nx", varnames["zl"]: "zl"}
+                ).rename("v"),
             ]
         )
 
@@ -1400,14 +1416,11 @@ class experiment:
         eta_out.attrs = ic_raw_eta.attrs
 
         ## Regrid the fields vertically
-
         if (
             vcoord_type == "thickness"
         ):  ## In this case construct the vertical profile by summing thickness
             tracers_out["zl"] = tracers_out["zl"].diff("zl")
-            dz = tracers_out[self.z].diff(self.z)
-            dz.name = "dz"
-            dz = xr.concat([dz, dz[-1]], dim=self.z)
+            dz = rgd.generate_dz(tracers_out, self.z)
 
         tracers_out = tracers_out.interp({"zl": self.vgrid.zl.values})
         vel_out = vel_out.interp({"zl": self.vgrid.zl.values})
@@ -2934,9 +2947,30 @@ class segment:
         self.segment_name = segment_name
         self.repeat_year_forcing = repeat_year_forcing
 
-    def rotate(self, u, v, radian_angle):
-        # Make docstring
+    def rotate_complex(self, u, v, radian_angle):
+        """
+        Rotate velocities to grid orientation using complex number math (Same as rotate)
+        Args:
+            u (xarray.DataArray): The u-component of the velocity.
+            v (xarray.DataArray): The v-component of the velocity.
+            radian_angle (xarray.DataArray): The angle of the grid in RADIANS
 
+        Returns:
+            Tuple[xarray.DataArray, xarray.DataArray]: The rotated u and v components of the velocity.
+        """
+
+        # express velocity in the complex plan
+        vel = u + v * 1j
+        # rotate velocity using grid angle theta
+        vel = vel * np.exp(1j * radian_angle)
+
+        # From here you can easily get the rotated u, v, or the magnitude/direction of the currents:
+        u = np.real(vel)
+        v = np.imag(vel)
+
+        return u, v
+
+    def rotate(self, u, v, radian_angle):
         """
         Rotate the velocities to the grid orientation.
         Args:
@@ -2974,7 +3008,7 @@ class segment:
                 coords,
                 self.outfolder
                 / f"weights/bilinear_velocity_weights_{self.orientation}.nc",
-                method="nearest_s2d",
+                method="bilinear",
             )
 
             regridded = regridder(
@@ -2990,7 +3024,6 @@ class segment:
                     regridded[self.v],
                     radian_angle=np.radians(coords.angle.values),
                 )
-
             elif rotational_method == rot.RotationMethod.EXPAND_GRID:
 
                 # Recalculate entire hgrid angles

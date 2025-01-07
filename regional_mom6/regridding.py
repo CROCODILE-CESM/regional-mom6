@@ -207,6 +207,8 @@ def create_regridder(
     output_grid: xr.Dataset,
     outfile: Path = None,
     method: str = "bilinear",
+    locstream_out: bool = True,
+    periodic: bool = False,
 ) -> xe.Regridder:
     """
     Basic Regridder for any forcing variables, this just wraps the xesmf regridder for a few defaults
@@ -220,6 +222,10 @@ def create_regridder(
         The path to the output file for weights I believe, by default Path(".temp")
     method : str, optional
         The regridding method, by default "bilinear"
+    locstream_out : bool, optional
+        Whether to output the locstream, by default True
+    periodic : bool, optional
+        Whether the grid is periodic, by default False
     Returns
     -------
     xe.Regridder
@@ -230,8 +236,8 @@ def create_regridder(
         forcing_variables,
         output_grid,
         method=method,
-        locstream_out=True,
-        periodic=False,
+        locstream_out=locstream_out,
+        periodic=periodic,
         filename=outfile,
         reuse_weights=False,
     )

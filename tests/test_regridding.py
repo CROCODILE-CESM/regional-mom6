@@ -18,10 +18,13 @@ def test_smoke_untested_funcs(get_curvilinear_hgrid, generate_silly_vt_dataset):
 
 
 def test_fill_missing_data(generate_silly_vt_dataset):
+    """
+    Only testing forward fill for now
+    """
     ds = generate_silly_vt_dataset
     ds["temp"][0, 0, 6:10, 0] = np.nan
 
-    ds = rgd.fill_missing_data(ds, "silly_depth")
+    ds = rgd.fill_missing_data(ds, "silly_depth", fill="f")
 
     assert (
         ds["temp"][0, 0, 6:10, 0] == (ds["temp"][0, 0, 5, 0])
