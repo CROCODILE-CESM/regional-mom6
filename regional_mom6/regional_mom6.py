@@ -1486,7 +1486,7 @@ class experiment:
 
         return
 
-    def get_glorys_rectangular(self, raw_boundaries_path):
+    def get_glorys(self, raw_boundaries_path):
         """
         This function is a wrapper for `get_glorys_data`, calling this function once for each of the rectangular boundary segments and the initial condition. For more complex boundary shapes, call `get_glorys_data` directly for each of your boundaries that aren't parallel to lines of constant latitude or longitude. For example, for an angled Northern boundary that spans multiple latitudes, you'll need to download a wider rectangle containing the entire boundary.
 
