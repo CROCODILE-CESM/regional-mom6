@@ -2026,7 +2026,8 @@ class experiment:
 
         ## reopen bathymetry to modify
         print(
-            "Tidy bathymetry: Reading in regridded bathymetry to fix up metadata...", end=""
+            "Tidy bathymetry: Reading in regridded bathymetry to fix up metadata...",
+            end="",
         )
         if read_bathy_from_file := bathymetry is None:
             bathymetry = xr.open_dataset(
@@ -2212,9 +2213,7 @@ class experiment:
             "Running GFDL's FRE Tools. The following information is all printed by the FRE tools themselves"
         )
         if not (self.mom_input_dir / "bathymetry.nc").exists():
-            print(
-                "No bathymetry file! Need to run setup_bathymetry method first"
-            )
+            print("No bathymetry file! Need to run setup_bathymetry method first")
             return
 
         for p in self.mom_input_dir.glob("mask_table*"):
@@ -2293,11 +2292,10 @@ class experiment:
         )
 
         if not premade_rundir_path.exists():
+            print("Could not find premade run directories at ", premade_rundir_path)
             print(
-                "Could not find premade run directories at ", premade_rundir_path
-            )
-            print(
-                "Perhaps the package was imported directly rather than installed with conda. Checking if this is the case... ", end=""
+                "Perhaps the package was imported directly rather than installed with conda. Checking if this is the case... ",
+                end="",
             )
 
             premade_rundir_path = Path(
@@ -2644,9 +2642,7 @@ class experiment:
         else:
             if param_name in MOM_override_dict.keys():
                 original_val = MOM_override_dict[param_name]["value"]
-                print(
-                    "Deleting parameter {} from MOM_override".format(param_name)
-                )
+                print("Deleting parameter {} from MOM_override".format(param_name))
                 del MOM_override_dict[param_name]
             else:
                 print(
