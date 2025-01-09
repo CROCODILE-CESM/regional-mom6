@@ -1342,7 +1342,7 @@ class experiment:
 
         ## Regrid all fields horizontally.
 
-        rm6_logger.info("Regridding Velocities... ", end="")
+        rm6_logger.info("Regridding Velocities... ")
         regridded_u = regridder_u(ic_raw_u)
         regridded_v = regridder_v(ic_raw_v)
         if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
@@ -1385,7 +1385,7 @@ class experiment:
             ]
         )
 
-        rm6_logger.info("Done.\nRegridding Tracers... ", end="")
+        rm6_logger.info("Done.\nRegridding Tracers... ")
 
         tracers_out = (
             xr.merge(
@@ -1409,7 +1409,7 @@ class experiment:
             }
         )
 
-        rm6_logger.info("Done.\nRegridding Free surface... ", end="")
+        rm6_logger.info("Done.\nRegridding Free surface... ")
 
         eta_out = (
             regridder_t(ic_raw_eta)
@@ -1449,7 +1449,7 @@ class experiment:
         tracers_out = tracers_out.interp({"zl": self.vgrid.zl.values})
         vel_out = vel_out.interp({"zl": self.vgrid.zl.values})
 
-        rm6_logger.info("Saving outputs... ", end="")
+        rm6_logger.info("Saving outputs... ")
 
         vel_out.fillna(0).to_netcdf(
             self.mom_input_dir / "init_vel.nc",
@@ -1678,7 +1678,7 @@ class experiment:
             rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is 'GIVEN_ANGLE'.
         """
 
-        rm6_logger.info("Processing {} boundary...".format(orientation), end="")
+        rm6_logger.info("Processing {} boundary...".format(orientation))
         if not path_to_bc.exists():
             raise FileNotFoundError(
                 f"Boundary file not found at {path_to_bc}. Please ensure that the files are named in the format `east_unprocessed.nc`."
@@ -1789,7 +1789,7 @@ class experiment:
         )
         # Initialize or find boundary segment
         for b in self.boundaries:
-            rm6_logger.info("Processing {} boundary...".format(b), end="")
+            rm6_logger.info("Processing {} boundary...".format(b))
 
             # If the GLORYS ocean_state has already created segments, we don't create them again.
             seg = segment(
@@ -2028,8 +2028,7 @@ class experiment:
 
         ## reopen bathymetry to modify
         rm6_logger.info(
-            "Tidy bathymetry: Reading in regridded bathymetry to fix up metadata...",
-            end="",
+            "Tidy bathymetry: Reading in regridded bathymetry to fix up metadata..."
         )
         if read_bathy_from_file := bathymetry is None:
             bathymetry = xr.open_dataset(
@@ -2055,7 +2054,7 @@ class experiment:
         land_mask = np.abs(ocean_mask - 1)
 
         ## REMOVE INLAND LAKES
-        rm6_logger.info("done. Filling in inland lakes and channels... ", end="")
+        rm6_logger.info("done. Filling in inland lakes and channels... ")
 
         changed = True  ## keeps track of whether solution has converged or not
 
@@ -2743,13 +2742,13 @@ class experiment:
                             )
 
                         rm6_logger.info(
-                            "Changed",
-                            var,
-                            "from",
-                            original_MOM_file_dict[var],
-                            "to",
-                            MOM_file_dict[var],
-                            "in {}!".format(MOM_file_dict["filename"]),
+                            "Changed "
+                            + str(var)
+                            + " from "
+                            + str(original_MOM_file_dict[var]["value"])
+                            + " to "
+                            + str(MOM_file_dict[var]["value"])
+                            + "in {}!".format(str(MOM_file_dict["filename"]))
                         )
 
         # Add new fields
