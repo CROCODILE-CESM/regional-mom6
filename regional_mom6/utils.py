@@ -299,7 +299,9 @@ def ep2ap(SEMA, ECC, INC, PHA):
     return ua, va, up, vp
 
 
-def setup_logger(name: str, set_handler = False, log_level = logging.INFO) -> logging.Logger:
+def setup_logger(
+    name: str, set_handler=False, log_level=logging.INFO
+) -> logging.Logger:
     """
     Setup general config for a logger.
     """
@@ -311,9 +313,7 @@ def setup_logger(name: str, set_handler = False, log_level = logging.INFO) -> lo
         handler.setLevel(log_level)
 
         # Create a formatter (optional)
-        formatter = logging.Formatter(
-            "%(name)s.%(funcName)s:%(levelname)s:%(message)s"
-        )
+        formatter = logging.Formatter("%(name)s.%(funcName)s:%(levelname)s:%(message)s")
         handler.setFormatter(formatter)
 
         # Add the handler to the logger

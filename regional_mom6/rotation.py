@@ -1,6 +1,7 @@
 from .utils import setup_logger
 import logging
-rotation_logger = setup_logger(__name__, set_handler = False)
+
+rotation_logger = setup_logger(__name__, set_handler=False)
 # An Enum is like a dropdown selection for a menu, it essentially limits the type of input parameters. It comes with additional complexity, which of course is always a challenge.
 from enum import Enum
 import xarray as xr

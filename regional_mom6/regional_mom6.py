@@ -24,6 +24,7 @@ from . import regridding as rgd
 from . import rotation as rot
 from .utils import quadrilateral_areas, ap2ep, ep2ap, is_rectilinear_hgrid, setup_logger
 import logging
+
 rm6_logger = setup_logger(__name__, set_handler=True)
 
 warnings.filterwarnings("ignore")
@@ -2214,7 +2215,9 @@ class experiment:
             "Running GFDL's FRE Tools. The following information is all printed by the FRE tools themselves"
         )
         if not (self.mom_input_dir / "bathymetry.nc").exists():
-            rm6_logger.error("No bathymetry file! Need to run setup_bathymetry method first")
+            rm6_logger.error(
+                "No bathymetry file! Need to run setup_bathymetry method first"
+            )
             return
 
         for p in self.mom_input_dir.glob("mask_table*"):
@@ -2293,7 +2296,9 @@ class experiment:
         )
 
         if not premade_rundir_path.exists():
-            rm6_logger.info("Could not find premade run directories at ", premade_rundir_path)
+            rm6_logger.info(
+                "Could not find premade run directories at ", premade_rundir_path
+            )
             rm6_logger.info(
                 "Perhaps the package was imported directly rather than installed with conda. Checking if this is the case... "
             )
@@ -2642,7 +2647,9 @@ class experiment:
         else:
             if param_name in MOM_override_dict.keys():
                 original_val = MOM_override_dict[param_name]["value"]
-                rm6_logger.info("Deleting parameter {} from MOM_override".format(param_name))
+                rm6_logger.info(
+                    "Deleting parameter {} from MOM_override".format(param_name)
+                )
                 del MOM_override_dict[param_name]
             else:
                 rm6_logger.info(
