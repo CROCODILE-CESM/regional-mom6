@@ -22,7 +22,9 @@ import json
 import copy
 from . import regridding as rgd
 from . import rotation as rot
-from .utils import quadrilateral_areas, ap2ep, ep2ap, is_rectilinear_hgrid
+from .utils import quadrilateral_areas, ap2ep, ep2ap, is_rectilinear_hgrid, setup_logger
+import logging
+rm6_logger = setup_logger(__name__, set_handler=True)
 
 warnings.filterwarnings("ignore")
 
@@ -97,14 +99,14 @@ def create_experiment_from_config(
     Returns:
         experiment: An experiment object with the fields from the config loaded in.
     """
-    print("Reading from config file....")
+    rm6_logger.info("Reading from config file....")
     with open(config_file_path, "r") as f:
         config_dict = json.load(f)
 
-    print("Creating Empty Experiment Object....")
+    rm6_logger.info("Creating Empty Experiment Object....")
     expt = experiment.create_empty()
 
-    print("Setting Default Variables.....")
+    rm6_logger.info("Setting Default Variables.....")
     expt.expt_name = config_dict["expt_name"]
     try:
         expt.longitude_extent = tuple(config_dict["longitude_extent"])
@@ -145,13 +147,13 @@ def create_experiment_from_config(
     expt.boundaries = config_dict["boundaries"]
 
     if create_hgrid_and_vgrid:
-        print("Creating hgrid and vgrid....")
+        rm6_logger.info("Creating hgrid and vgrid....")
         expt.hgrid = expt._make_hgrid()
         expt.vgrid = expt._make_vgrid()
     else:
-        print("Skipping hgrid and vgrid creation....")
+        rm6_logger.info("Skipping hgrid and vgrid creation....")
 
-    print("Done!")
+    rm6_logger.info("Done!")
     return expt
 
 
@@ -713,7 +715,7 @@ class experiment:
                     float(self.hgrid.y.max()),
                 )
             except:
-                print(
+                rm6_logger.error(
                     "Error while reading in existing horizontal grid!\n\n"
                     + f"Make sure `hgrid.nc`exists in {self.mom_input_dir} directory."
                 )
@@ -737,7 +739,7 @@ class experiment:
                 vgrid_from_file = xr.open_dataset(vgrid_path)
 
             except:
-                print(
+                rm6_logger.error(
                     "Error while reading in existing vertical coordinates!\n\n"
                     + f"Make sure `vcoord.nc`exists in {self.mom_input_dir} directory."
                 )
@@ -779,7 +781,7 @@ class experiment:
                     decode_times=False,
                 )
             else:
-                print(
+                rm6_logger.error(
                     f"bathymetry.nc file not found! Make sure you've successfully run the setup_bathmetry method, or copied your own bathymetry.nc file into {self.mom_input_dir}."
                 )
                 return None
@@ -791,7 +793,7 @@ class experiment:
                     decode_times=False,
                 )
             else:
-                print(
+                rm6_logger.error(
                     f"init_vel.nc file not found! Make sure you've successfully run the setup_initial_condition method, or copied your own init_vel.nc file into {self.mom_input_dir}."
                 )
                 return
@@ -804,7 +806,7 @@ class experiment:
                     decode_times=False,
                 )
             else:
-                print(
+                rm6_logger.error(
                     f"init_tracers.nc file not found! Make sure you've successfully run the setup_initial_condition method, or copied your own init_tracers.nc file into {self.mom_input_dir}."
                 )
                 return
@@ -817,7 +819,7 @@ class experiment:
                     decode_cf=False,
                 )
             except:
-                print(
+                rm6_logger.error(
                     f"{name} files not found! Make sure you've successfully run the setup_ocean_state_boundaries method, or copied your own segment files file into {self.mom_input_dir}."
                 )
                 return None
@@ -950,7 +952,7 @@ class experiment:
         ## Check whether the minimum depth is less than the first three layers
 
         if self.minimum_depth < zi[2]:
-            print(
+            rm6_logger.warning(
                 f"Warning: Minimum depth of {self.minimum_depth}m is less than the depth of the third interface ({zi[2]}m)!\n"
                 + "This means that some areas may only have one or two layers between the surface and sea floor. \n"
                 + "For increased stability, consider increasing the minimum depth, or adjusting the vertical coordinate to add more layers near the surface."
@@ -1089,7 +1091,7 @@ class experiment:
             Dict: A dictionary containing the configuration information.
         """
         if not quiet:
-            print("Writing Config File.....")
+            rm6_logger.info("Writing Config File.....")
         try:
             date_range = [
                 self.date_range[0].strftime("%Y-%m-%d %H:%M:%S"),
@@ -1126,7 +1128,7 @@ class experiment:
                     indent=4,
                 )
         if not quiet:
-            print("Done.")
+            rm6_logger.info("Done.")
         return config_dict
 
     def setup_initial_condition(
@@ -1335,11 +1337,11 @@ class experiment:
         # vgrid = rgd.get_hgrid_arakawa_c_points(self.hgrid, "v").rename({"vlon": "lon", "vlat": "lat"}).set_coords(["lat", "lon"])
 
         ## Construct the cell centre grid for tracers (xh, yh).
-        print("INITIAL CONDITIONS")
+        rm6_logger.info("Setting up Initial Conditions")
 
         ## Regrid all fields horizontally.
 
-        print("Regridding Velocities... ", end="")
+        rm6_logger.info("Regridding Velocities... ", end="")
         regridded_u = regridder_u(ic_raw_u)
         regridded_v = regridder_v(ic_raw_v)
         if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
@@ -1382,7 +1384,7 @@ class experiment:
             ]
         )
 
-        print("Done.\nRegridding Tracers... ", end="")
+        rm6_logger.info("Done.\nRegridding Tracers... ", end="")
 
         tracers_out = (
             xr.merge(
@@ -1406,7 +1408,7 @@ class experiment:
             }
         )
 
-        print("Done.\nRegridding Free surface... ", end="")
+        rm6_logger.info("Done.\nRegridding Free surface... ", end="")
 
         eta_out = (
             regridder_t(ic_raw_eta)
@@ -1414,7 +1416,7 @@ class experiment:
             .rename("eta_t")
             .transpose("ny", "nx")
         )  ## eta_t is the name set in MOM_input by default
-        print("Done.")
+        rm6_logger.info("Done.")
 
         ## Return attributes to arrays
 
@@ -1446,7 +1448,7 @@ class experiment:
         tracers_out = tracers_out.interp({"zl": self.vgrid.zl.values})
         vel_out = vel_out.interp({"zl": self.vgrid.zl.values})
 
-        print("Saving outputs... ", end="")
+        rm6_logger.info("Saving outputs... ", end="")
 
         vel_out.fillna(0).to_netcdf(
             self.mom_input_dir / "init_vel.nc",
@@ -1482,7 +1484,7 @@ class experiment:
         self.ic_tracers = tracers_out
         self.ic_vels = vel_out
 
-        print("done setting up initial condition.")
+        rm6_logger.info("done setting up initial condition.")
 
         return
 
@@ -1615,7 +1617,7 @@ class experiment:
                 )
 
         if len(self.boundaries) < 4:
-            print(
+            rm6_logger.warning(
                 "NOTE: the 'setup_run_directories' method does understand the less than four boundaries but be careful. Please check the MOM_input/override file carefully to reflect the number of boundaries you have, and their orientations. You should be able to find the relevant section in the MOM_input/override file by searching for 'segment_'. Ensure that the segment names match those in your inputdir/forcing folder"
             )
 
@@ -1675,7 +1677,7 @@ class experiment:
             rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is 'GIVEN_ANGLE'.
         """
 
-        print("Processing {} boundary...".format(orientation), end="")
+        rm6_logger.info("Processing {} boundary...".format(orientation), end="")
         if not path_to_bc.exists():
             raise FileNotFoundError(
                 f"Boundary file not found at {path_to_bc}. Please ensure that the files are named in the format `east_unprocessed.nc`."
@@ -1699,7 +1701,7 @@ class experiment:
             rotational_method=rotational_method
         )
 
-        print("Done.")
+        rm6_logger.info("Done.")
         return
 
     def setup_boundary_tides(
@@ -1739,7 +1741,7 @@ class experiment:
         Type: Python Functions, Source Code
         Web Address: https://github.com/jsimkins2/nwa25
         """
-        if boundary_type != "rectangle":
+        if boundary_type != "rectangle" and boundary_type != "curvilinear":
             raise ValueError(
                 "Only rectangular boundaries are supported by this method."
             )
@@ -1786,7 +1788,7 @@ class experiment:
         )
         # Initialize or find boundary segment
         for b in self.boundaries:
-            print("Processing {} boundary...".format(b), end="")
+            rm6_logger.info("Processing {} boundary...".format(b), end="")
 
             # If the GLORYS ocean_state has already created segments, we don't create them again.
             seg = segment(
@@ -1807,7 +1809,7 @@ class experiment:
             seg.regrid_tides(
                 tpxo_v, tpxo_u, tpxo_h, times, rotational_method=rotational_method
             )
-            print("Done")
+            rm6_logger.info("Done")
 
     def setup_bathymetry(
         self,
@@ -1991,7 +1993,7 @@ class experiment:
         )
 
         self.tidy_bathymetry(fill_channels, positive_down, bathymetry=bathymetry)
-        print("setup bathymetry has finished successfully.")
+        rm6_logger.info("setup bathymetry has finished successfully.")
 
         return bathymetry
 
@@ -2024,7 +2026,7 @@ class experiment:
         """
 
         ## reopen bathymetry to modify
-        print(
+        rm6_logger.info(
             "Tidy bathymetry: Reading in regridded bathymetry to fix up metadata...",
             end="",
         )
@@ -2052,7 +2054,7 @@ class experiment:
         land_mask = np.abs(ocean_mask - 1)
 
         ## REMOVE INLAND LAKES
-        print("done. Filling in inland lakes and channels... ", end="")
+        rm6_logger.info("done. Filling in inland lakes and channels... ", end="")
 
         changed = True  ## keeps track of whether solution has converged or not
 
@@ -2200,7 +2202,7 @@ class experiment:
                 encoding={"depth": {"_FillValue": None}},
             )
 
-        print("done.")
+        rm6_logger.info("done.")
         return
 
     def run_FRE_tools(self, layout=None):
@@ -2208,17 +2210,17 @@ class experiment:
         User provides processor ``layout`` tuple of processing units.
         """
 
-        print(
+        rm6_logger.info(
             "Running GFDL's FRE Tools. The following information is all printed by the FRE tools themselves"
         )
         if not (self.mom_input_dir / "bathymetry.nc").exists():
-            print("No bathymetry file! Need to run setup_bathymetry method first")
+            rm6_logger.error("No bathymetry file! Need to run setup_bathymetry method first")
             return
 
         for p in self.mom_input_dir.glob("mask_table*"):
             p.unlink()
 
-        print(
+        rm6_logger.info(
             "OUTPUT FROM MAKE SOLO MOSAIC:",
             subprocess.run(
                 str(self.toolpath_dir / "make_solo_mosaic/make_solo_mosaic")
@@ -2229,7 +2231,7 @@ class experiment:
             sep="\n\n",
         )
 
-        print(
+        rm6_logger.info(
             "OUTPUT FROM QUICK MOSAIC:",
             subprocess.run(
                 str(self.toolpath_dir / "make_quick_mosaic/make_quick_mosaic")
@@ -2249,7 +2251,7 @@ class experiment:
         ``layout`` tuple of processing units.
         """
 
-        print(
+        rm6_logger.info(
             "OUTPUT FROM CHECK MASK:\n\n",
             subprocess.run(
                 str(self.toolpath_dir / "check_mask/check_mask")
@@ -2291,8 +2293,8 @@ class experiment:
         )
 
         if not premade_rundir_path.exists():
-            print("Could not find premade run directories at ", premade_rundir_path)
-            print(
+            rm6_logger.info("Could not find premade run directories at ", premade_rundir_path)
+            rm6_logger.info(
                 "Perhaps the package was imported directly rather than installed with conda. Checking if this is the case... "
             )
 
@@ -2307,7 +2309,7 @@ class experiment:
                     + "There may be an issue with package installation. Check that the `premade_run_directory` folder is present in one of these two locations"
                 )
             else:
-                print("Found run files. Continuing...")
+                rm6_logger.info("Found run files. Continuing...")
 
         # Define the locations of the directories we'll copy files across from. Base contains most of the files, and overwrite replaces files in the base directory.
         base_run_dir = Path(premade_rundir_path / "common_files")
@@ -2379,7 +2381,7 @@ class experiment:
         mask_table = None
         for p in self.mom_input_dir.glob("mask_table.*"):
             if mask_table != None:
-                print(
+                rm6_logger.warning(
                     f"WARNING: Multiple mask tables found. Defaulting to {mask_table}. If this is not what you want, remove it from the run directory and try again."
                 )
                 break
@@ -2393,7 +2395,7 @@ class experiment:
                 y,
             )  # This is a local variable keeping track of the layout as read from the mask table. Not to be confused with self.layout which is unchanged and may differ.
 
-            print(
+            rm6_logger.info(
                 f"Mask table {p.name} read. Using this to infer the cpu layout {layout}, total masked out cells {masked}, and total number of CPUs {ncpus}."
             )
         # Case where there's no mask table. Either because user hasn't run FRE tools, or because the domain is mostly water.
@@ -2403,11 +2405,11 @@ class experiment:
             # in case the user accidentally loads in the wrong mask table.
             layout = self.layout
             if layout == None:
-                print(
+                rm6_logger.warning(
                     "WARNING: No mask table found, and the cpu layout has not been set. \nAt least one of these is requiret to set up the experiment if you're running MOM6 standalone with the FMS coupler. \nIf you're running within CESM, ignore this message."
                 )
             else:
-                print(
+                rm6_logger.warning(
                     f"No mask table found, but the cpu layout has been set to {self.layout} This suggests the domain is mostly water, so there are "
                     + "no `non compute` cells that are entirely land. If this doesn't seem right, "
                     + "ensure you've already run the `FRE_tools` method which sets up the cpu mask table. Keep an eye on any errors that might print while"
@@ -2450,7 +2452,7 @@ class experiment:
         # OBC Adjustments
 
         # Delete MOM_input OBC stuff that is indexed because we want them only in MOM_override.
-        print(
+        rm6_logger.info(
             "Deleting indexed OBC keys from MOM_input_dict in case we have a different number of segments"
         )
         keys_to_delete = [key for key in MOM_input_dict if "_SEGMENT_00" in key]
@@ -2550,7 +2552,7 @@ class experiment:
         if not using_payu and os.path.exists(f"{self.mom_run_dir}/config.yaml"):
             os.remove(f"{self.mom_run_dir}/config.yaml")
         elif ncpus == None:
-            print(
+            rm6_logger.warning(
                 "WARNING: Layout has not been set! Cannot create payu configuration file. Run the FRE_tools first."
             )
         else:
@@ -2628,7 +2630,7 @@ class experiment:
 
             if param_name in MOM_override_dict.keys():
                 original_val = MOM_override_dict[param_name]["value"]
-                print(
+                rm6_logger.info(
                     "This parameter {} is being replaced from {} to {} in MOM_override".format(
                         param_name, original_val, param_value
                     )
@@ -2640,10 +2642,10 @@ class experiment:
         else:
             if param_name in MOM_override_dict.keys():
                 original_val = MOM_override_dict[param_name]["value"]
-                print("Deleting parameter {} from MOM_override".format(param_name))
+                rm6_logger.info("Deleting parameter {} from MOM_override".format(param_name))
                 del MOM_override_dict[param_name]
             else:
-                print(
+                rm6_logger.info(
                     "Key to be deleted {} was not in MOM_override to begin with.".format(
                         param_name
                     )
@@ -2712,7 +2714,7 @@ class experiment:
                         # As in there wasn't an override before but we want one
                         if MOM_file_dict[var]["override"]:
                             lines[jj] = "#override " + lines[jj]
-                            print("Added override to variable " + var + "!")
+                            rm6_logger.info("Added override to variable " + var + "!")
                     if var in MOM_file_dict.keys() and (
                         str(MOM_file_dict[var]["value"])
                     ) != str(original_MOM_file_dict[var]["value"]):
@@ -2733,7 +2735,7 @@ class experiment:
                                 + "\n"
                             )
 
-                        print(
+                        rm6_logger.info(
                             "Changed",
                             var,
                             "from",
@@ -2755,7 +2757,7 @@ class experiment:
                     lines.append(
                         f"{key} = {MOM_file_dict[key]['value']} !{MOM_file_dict[key]['comment']}\n"
                     )
-                print(
+                rm6_logger.info(
                     "Added",
                     key,
                     "to",
@@ -2777,7 +2779,7 @@ class experiment:
                     for line in lines
                     if not all(word in line for word in search_words)
                 ]
-                print(
+                rm6_logger.info(
                     "Removed",
                     key,
                     "in",

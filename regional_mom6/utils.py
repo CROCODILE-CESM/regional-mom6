@@ -299,20 +299,20 @@ def ep2ap(SEMA, ECC, INC, PHA):
     return ua, va, up, vp
 
 
-def setup_logger(name: str) -> logging.Logger:
+def setup_logger(name: str, set_handler = False, log_level = logging.INFO) -> logging.Logger:
     """
     Setup general config for a logger.
     """
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-    if not logger.hasHandlers():
+    logger.setLevel(log_level)
+    if set_handler and not logger.hasHandlers():
         # Create a handler to print to stdout (Jupyter captures stdout)
         handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(logging.INFO)
+        handler.setLevel(log_level)
 
         # Create a formatter (optional)
         formatter = logging.Formatter(
-            "%(asctime)s - %(name)s.%(funcName)s - %(levelname)s - %(message)s"
+            "%(name)s.%(funcName)s:%(levelname)s:%(message)s"
         )
         handler.setFormatter(formatter)
 

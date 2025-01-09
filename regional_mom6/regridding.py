@@ -35,7 +35,7 @@ import netCDF4
 from .utils import setup_logger
 
 
-regridding_logger = setup_logger(__name__)
+regridding_logger = setup_logger(__name__, set_handler=False)
 
 
 def coords(
