@@ -20,9 +20,9 @@ import glob
 from collections import defaultdict
 import json
 import copy
-from regional_mom6 import regridding as rgd
-from regional_mom6 import rotation as rot
-from regional_mom6.utils import (
+from . import regridding as rgd
+from . import rotation as rot
+from .utils import (
     quadrilateral_areas,
     ap2ep,
     ep2ap,
