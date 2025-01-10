@@ -321,15 +321,62 @@ def setup_logger(
     return logger
 
 
-def is_rectilinear_hgrid(hgrid: xr.Dataset) -> bool:
+def rotate_complex(u, v, radian_angle):
     """
-    Check if the hgrid is a rectilinear grid.
-    """
-    if hgrid.x.shape[0] < 2 or hgrid.x.shape[1] < 2:
-        raise ValueError("hgrid must have at least 2 points in each direction")
-    if not np.all(hgrid.y == hgrid.y[:, 0].values[:, np.newaxis]):
-        return False
-    if not np.all(hgrid.x == hgrid.x[0, :].values[np.newaxis, :]):
-        return False
+    Rotate velocities to grid orientation using complex number math (Same as rotate)
+    Args:
+        u (xarray.DataArray): The u-component of the velocity.
+        v (xarray.DataArray): The v-component of the velocity.
+        radian_angle (xarray.DataArray): The angle of the grid in RADIANS
 
-    return True
+    Returns:
+        Tuple[xarray.DataArray, xarray.DataArray]: The rotated u and v components of the velocity.
+    """
+
+    # express velocity in the complex plan
+    vel = u + v * 1j
+    # rotate velocity using grid angle theta
+    vel = vel * np.exp(1j * radian_angle)
+
+    # From here you can easily get the rotated u, v, or the magnitude/direction of the currents:
+    u = np.real(vel)
+    v = np.imag(vel)
+
+    return u, v
+
+
+def rotate(u, v, radian_angle):
+    """
+    Rotate the velocities to the grid orientation.
+    Args:
+        u (xarray.DataArray): The u-component of the velocity.
+        v (xarray.DataArray): The v-component of the velocity.
+        radian_angle (xarray.DataArray): The angle of the grid in RADIANS
+
+    Returns:
+        Tuple[xarray.DataArray, xarray.DataArray]: The rotated u and v components of the velocity.
+    """
+
+    u_rot = u * np.cos(radian_angle) - v * np.sin(radian_angle)
+    v_rot = u * np.sin(radian_angle) + v * np.cos(radian_angle)
+    return u_rot, v_rot
+
+
+def is_rectilinear_hgrid(hgrid: xr.Dataset, rtol: float = 1e-3) -> bool:
+    """
+    Check if the hgrid is a rectilinear grid. From mom6_bathy.grid.is_rectangular by Alper (Altuntas
+    )
+    Check if the grid is a rectangular lat-lon grid by comparing the first and last rows and columns of the tlon and tlat arrays.
+
+    Args:
+        hgrid (xarray.Dataset): The horizontal grid dataset.
+        rtol (float): Relative tolerance. Default is 1e-3.
+    """
+    if (
+        np.allclose(hgrid.tlon[:, 0], hgrid.tlon[0, 0], rtol=rtol)
+        and np.allclose(hgrid.tlon[:, -1], hgrid.tlon[0, -1], rtol=rtol)
+        and np.allclose(hgrid.tlat[0, :], hgrid.tlat[0, 0], rtol=rtol)
+        and np.allclose(hgrid.tlat[-1, :], hgrid.tlat[-1, 0], rtol=rtol)
+    ):
+        return True
+    return False
