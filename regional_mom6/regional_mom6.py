@@ -1956,9 +1956,9 @@ class experiment:
         )
 
         ## Ensure correct encoding
-        bathymetry = xr.Dataset(
-            {"depth": (["ny", "nx"], bathymetry[vertical_coordinate_name].values)}
-        )
+#        bathymetry = xr.Dataset(
+#            {"depth": (["ny", "nx"], bathymetry[vertical_coordinate_name].values)}
+#        )
         bathymetry.attrs["depth"] = "meters"
         bathymetry.attrs["standard_name"] = "bathymetric depth at T-cell centers"
         bathymetry.attrs["coordinates"] = "zi"
