@@ -2,6 +2,7 @@ import numpy as np
 import logging
 import sys
 import xarray as xr
+from regional_mom6 import regridding as rgd
 
 
 def vecdot(v1, v2):
@@ -372,11 +373,12 @@ def is_rectilinear_hgrid(hgrid: xr.Dataset, rtol: float = 1e-3) -> bool:
         hgrid (xarray.Dataset): The horizontal grid dataset.
         rtol (float): Relative tolerance. Default is 1e-3.
     """
+    ds_t = rgd.get_hgrid_arakawa_c_points(hgrid)
     if (
-        np.allclose(hgrid.tlon[:, 0], hgrid.tlon[0, 0], rtol=rtol)
-        and np.allclose(hgrid.tlon[:, -1], hgrid.tlon[0, -1], rtol=rtol)
-        and np.allclose(hgrid.tlat[0, :], hgrid.tlat[0, 0], rtol=rtol)
-        and np.allclose(hgrid.tlat[-1, :], hgrid.tlat[-1, 0], rtol=rtol)
+        np.allclose(ds_t.tlon[:, 0], ds_t.tlon[0, 0], rtol=rtol)
+        and np.allclose(ds_t.tlon[:, -1], ds_t.tlon[0, -1], rtol=rtol)
+        and np.allclose(ds_t.tlat[0, :], ds_t.tlat[0, 0], rtol=rtol)
+        and np.allclose(ds_t.tlat[-1, :], ds_t.tlat[-1, 0], rtol=rtol)
     ):
         return True
     return False

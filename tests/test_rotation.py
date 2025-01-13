@@ -231,3 +231,56 @@ def test_initialize_grid_rotation_angle_using_expanded_hgrid(get_curvilinear_hgr
     assert (angle.values - hgrid.angle_dx < 1).all()
     assert angle.values.shape == hgrid.x.shape
     return
+
+
+def test_get_rotation_angle(get_curvilinear_hgrid, get_rectilinear_hgrid):
+    """
+    Generate a curvilinear grid and test the grid rotation angle at t_points based on what we pass to generate to generate_curvilinear_grid
+    """
+    curved_hgrid = get_curvilinear_hgrid
+    rect_hgrid = get_rectilinear_hgrid
+
+    o = None
+    rotational_method = rot.RotationMethod.NO_ROTATION
+    angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
+    assert angle.shape == rect_hgrid.x.shape
+    assert (angle.values == 0).all()
+
+    rotational_method == rot.RotationMethod.NO_ROTATION
+    with pytest.raises(
+        ValueError, match="NO_ROTATION method only works with rectilinear grids"
+    ):
+        angle = rot.get_rotation_angle(rotational_method, curved_hgrid, orientation=o)
+
+    rotational_method = rot.RotationMethod.GIVEN_ANGLE
+    angle = rot.get_rotation_angle(rotational_method, curved_hgrid, orientation=o)
+    assert angle.shape == curved_hgrid.x.shape
+    assert (angle.values == curved_hgrid.angle_dx).all()
+    angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
+    assert angle.shape == rect_hgrid.x.shape
+    assert (angle.values == 0).all()
+
+    rotational_method = rot.RotationMethod.EXPAND_GRID
+    angle = rot.get_rotation_angle(rotational_method, curved_hgrid, orientation=o)
+    assert angle.shape == curved_hgrid.x.shape
+    assert (
+        abs(angle.values - curved_hgrid.angle_dx) < 1
+    ).all()  # There shouldn't be large differences
+    angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
+    assert angle.shape == rect_hgrid.x.shape
+    assert (angle.values == 0).all()
+
+    # Check if o is boundary that the shape is of a boundary
+    o = "north"
+    rotational_method = rot.RotationMethod.NO_ROTATION
+    angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
+    assert angle.shape == rect_hgrid.x[-1].shape
+    assert (angle.values == 0).all()
+    rotational_method = rot.RotationMethod.EXPAND_GRID
+    angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
+    assert angle.shape == rect_hgrid.x[-1].shape
+    assert (angle.values == 0).all()
+    rotational_method = rot.RotationMethod.GIVEN_ANGLE
+    angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
+    assert angle.shape == rect_hgrid.x[-1].shape
+    assert (angle.values == 0).all()

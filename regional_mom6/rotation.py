@@ -1,12 +1,11 @@
-from .utils import setup_logger
-import logging
+from regional_mom6 import utils
+from regional_mom6.regridding import get_hgrid_arakawa_c_points, coords
 
-rotation_logger = setup_logger(__name__, set_handler=False)
+rotation_logger = utils.setup_logger(__name__, set_handler=False)
 # An Enum is like a dropdown selection for a menu, it essentially limits the type of input parameters. It comes with additional complexity, which of course is always a challenge.
 from enum import Enum
 import xarray as xr
 import numpy as np
-from .regridding import get_hgrid_arakawa_c_points
 
 
 class RotationMethod(Enum):
@@ -249,3 +248,79 @@ def create_expanded_hgrid(hgrid: xr.Dataset, expansion_width=1) -> xr.Dataset:
         }
     )
     return pseudo_hgrid
+
+
+def get_rotation_angle(
+    rotational_method: RotationMethod, hgrid: xr.Dataset, orientation=None
+):
+    """
+    This function returns the rotation angle - THIS IS ALWAYS BASED ON THE ASSUMPTION OF DEGREES - based on the rotational method and provided hgrid, if orientation & coords are provided, it will assume the boundary is requested
+    Parameters
+    ----------
+    rotational_method: RotationMethod
+        The rotational method to use
+    hgrid: xr.Dataset
+        The hgrid dataset
+    orientation: xr.Dataset
+        The orientation, which also lets us now that we are on a boundary
+    Returns
+    -------
+    xr.DataArray
+        angle in degrees
+    """
+    rotation_logger.info("Getting rotation angle")
+    boundary = False
+    if orientation != None:
+        rotation_logger.debug(
+            "The rotational angle is requested for the boundary: {}".format(orientation)
+        )
+        boundary = True
+
+    if rotational_method == RotationMethod.NO_ROTATION:
+        rotation_logger.debug("Using NO_ROTATION method")
+        if not utils.is_rectilinear_hgrid(hgrid):
+            raise ValueError("NO_ROTATION method only works with rectilinear grids")
+        angles = xr.zeros_like(hgrid.x)
+
+        if boundary:
+            # Subset to just boundary
+            # Add zeroes to hgrid
+            hgrid["zero_angle"] = angles
+
+            # Cut to boundary
+            zero_angle = coords(
+                hgrid,
+                orientation,
+                "doesnt_matter",
+                angle_variable_name="zero_angle",
+            )["angle"]
+
+            return zero_angle
+        else:
+            return angles
+    elif rotational_method == RotationMethod.GIVEN_ANGLE:
+        rotation_logger.debug("Using GIVEN_ANGLE method")
+        if boundary:
+            return coords(
+                hgrid, orientation, "doesnt_matter", angle_variable_name="angle_dx"
+            )["angle"]
+        else:
+            return hgrid["angle_dx"]
+    elif rotational_method == RotationMethod.EXPAND_GRID:
+        rotation_logger.debug("Using EXPAND_GRID method")
+        hgrid["angle_dx_rm6"] = initialize_grid_rotation_angles_using_expanded_hgrid(
+            hgrid
+        )
+
+        if boundary:
+            degree_angle = coords(
+                hgrid,
+                orientation,
+                "doesnt_matter",
+                angle_variable_name="angle_dx_rm6",
+            )["angle"]
+            return degree_angle
+        else:
+            return hgrid["angle_dx_rm6"]
+    else:
+        raise ValueError("Invalid rotational method")

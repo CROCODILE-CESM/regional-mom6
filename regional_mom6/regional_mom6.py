@@ -1357,23 +1357,14 @@ class experiment:
         print("Regridding Velocities... ", end="")
         regridded_u = regridder_u(ic_raw_u)
         regridded_v = regridder_v(ic_raw_v)
-        if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
-            rotated_u, rotated_v = rotate(
-                regridded_u,
-                regridded_v,
-                radian_angle=np.radians(self.hgrid.angle_dx.values),
-            )
-        elif rotational_method == rot.RotationMethod.EXPAND_GRID:
-            self.hgrid["angle_dx_rm6"] = (
-                rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
-            )
-            rotated_u, rotated_v = rotate(
-                regridded_u,
-                regridded_v,
-                radian_angle=np.radians(self.hgrid.angle_dx_rm6.values),
-            )
-        elif rotational_method == rot.RotationMethod.NO_ROTATION:
-            rotated_u, rotated_v = regridded_u, regridded_v
+        rotated_u, rotated_v = rotate(
+            regridded_u,
+            regridded_v,
+            radian_angle=np.radians(
+                rot.get_rotation_angle(rotational_method, self.hgrid).values
+            ),
+        )
+
         # Slice the velocites to the u and v grid.
         u_points = rgd.get_hgrid_arakawa_c_points(self.hgrid, "u")
         v_points = rgd.get_hgrid_arakawa_c_points(self.hgrid, "v")
@@ -3017,9 +3008,7 @@ class segment:
         Args:
         rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
         """
-        if rotational_method == rot.RotationMethod.NO_ROTATION:
-            if not is_rectilinear_hgrid(self.hgrid):
-                raise ValueError("NO_ROTATION method only works with rectilinear grids")
+
         rawseg = xr.open_dataset(self.infile, decode_times=False, engine="netcdf4")
 
         coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
@@ -3043,36 +3032,15 @@ class segment:
             )
 
             ## Angle Calculation & Rotation
-            if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
-                rotated_u, rotated_v = rotate(
-                    regridded[self.u],
-                    regridded[self.v],
-                    radian_angle=np.radians(coords.angle.values),
-                )
-            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
-
-                # Recalculate entire hgrid angles
-                self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
-                )
-
-                # Get just the boundary
-                degree_angle = rgd.coords(
-                    self.hgrid,
-                    self.orientation,
-                    self.segment_name,
-                    angle_variable_name="angle_dx_rm6",
-                )["angle"]
-
-                # Rotate
-                rotated_u, rotated_v = rotate(
-                    regridded[self.u],
-                    regridded[self.v],
-                    radian_angle=np.radians(degree_angle.values),
-                )
-            elif rotational_method == rot.RotationMethod.NO_ROTATION:
-                # Just transfer values
-                rotated_u, rotated_v = regridded[self.u], regridded[self.v]
+            rotated_u, rotated_v = rotate(
+                regridded[self.u],
+                regridded[self.v],
+                radian_angle=np.radians(
+                    rot.get_rotation_angle(
+                        rotational_method, self.hgrid, orientation=self.orientation
+                    ).values
+                ),
+            )
 
             rotated_ds = xr.Dataset(
                 {
@@ -3102,32 +3070,15 @@ class segment:
             )
 
             # See explanation of the rotational methods in the A grid section
-            if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
-                velocities_out["u"], velocities_out["v"] = rotate(
-                    velocities_out["u"],
-                    velocities_out["v"],
-                    radian_angle=np.radians(coords.angle.values),
-                )
-            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
-                self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
-                )
-                degree_angle = rgd.coords(
-                    self.hgrid,
-                    self.orientation,
-                    self.segment_name,
-                    angle_variable_name="angle_dx_rm6",
-                )["angle"]
-                velocities_out["u"], velocities_out["v"] = rotate(
-                    velocities_out["u"],
-                    velocities_out["v"],
-                    radian_angle=np.radians(degree_angle.values),
-                )
-            elif rotational_method == rot.RotationMethod.NO_ROTATION:
-                velocities_out["u"], velocities_out["v"] = (
-                    velocities_out["u"],
-                    velocities_out["v"],
-                )
+            velocities_out["u"], velocities_out["v"] = rotate(
+                velocities_out["u"],
+                velocities_out["v"],
+                radian_angle=np.radians(
+                    rot.get_rotation_angle(
+                        rotational_method, self.hgrid, orientation=self.orientation
+                    ).values
+                ),
+            )
 
             segment_out = xr.merge(
                 [
@@ -3167,29 +3118,16 @@ class segment:
             regridded_v = regridder_vvelocity(rawseg[[self.v]])
 
             # See explanation of the rotational methods in the A grid section
-            if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
-                rotated_u, rotated_v = rotate(
-                    regridded_u,
-                    regridded_v,
-                    radian_angle=np.radians(coords.angle.values),
-                )
-            elif rotational_method == rot.RotationMethod.EXPAND_GRID:
-                self.hgrid["angle_dx_rm6"] = (
-                    rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
-                )
-                degree_angle = rgd.coords(
-                    self.hgrid,
-                    self.orientation,
-                    self.segment_name,
-                    angle_variable_name="angle_dx_rm6",
-                )["angle"]
-                rotated_u, rotated_v = rotate(
-                    regridded_u,
-                    regridded_v,
-                    radian_angle=np.radians(degree_angle.values),
-                )
-            elif rotational_method == rot.RotationMethod.NO_ROTATION:
-                rotated_u, rotated_v = regridded_u, regridded_v
+            rotated_u, rotated_v = rotate(
+                regridded_u,
+                regridded_v,
+                radian_angle=np.radians(
+                    rot.get_rotation_angle(
+                        rotational_method, self.hgrid, orientation=self.orientation
+                    ).values
+                ),
+            )
+
             rotated_ds = xr.Dataset(
                 {
                     self.u: rotated_u,
@@ -3357,9 +3295,6 @@ class segment:
         Type: Python Functions, Source Code
         Web Address: https://github.com/jsimkins2/nwa25
         """
-        if rotational_method == rot.RotationMethod.NO_ROTATION:
-            if not is_rectilinear_hgrid(self.hgrid):
-                raise ValueError("NO_ROTATION method only works with rectilinear grids")
 
         # Establish Coords
         coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
@@ -3450,31 +3385,13 @@ class segment:
         # and convert ellipse back to amplitude and phase.
         SEMA, ECC, INC, PHA = ap2ep(ucplex, vcplex)
 
-        if rotational_method == rot.RotationMethod.GIVEN_ANGLE:
+        # Rotate
+        INC -= np.radians(
+            rot.get_rotation_angle(
+                rotational_method, self.hgrid, orientation=self.orientation
+            ).data[np.newaxis, :]
+        )
 
-            # Get user-provided angle
-            angle = coords["angle"]
-
-            # Rotate
-            INC -= np.radians(angle.data[np.newaxis, :])
-
-        elif rotational_method == rot.RotationMethod.EXPAND_GRID:
-
-            # Generate entire hgrid angles using pseudo_hgrid
-            self.hgrid["angle_dx_rm6"] = (
-                rot.initialize_grid_rotation_angles_using_expanded_hgrid(self.hgrid)
-            )
-
-            # Get just boundary angles
-            degree_angle = rgd.coords(
-                self.hgrid,
-                self.orientation,
-                self.segment_name,
-                angle_variable_name="angle_dx_rm6",
-            )["angle"]
-
-            # Rotate
-            INC -= np.radians(degree_angle.data[np.newaxis, :])
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
         # Convert to real amplitude and phase.
 

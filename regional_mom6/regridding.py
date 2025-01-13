@@ -32,7 +32,7 @@ from pathlib import Path
 import dask.array as da
 import numpy as np
 import netCDF4
-from .utils import setup_logger
+from regional_mom6.utils import setup_logger
 
 
 regridding_logger = setup_logger(__name__, set_handler=False)
