@@ -112,7 +112,10 @@ def create_experiment_from_config(
     print("Setting Default Variables.....")
     expt.expt_name = config_dict["expt_name"]
 
-    if config_dict["longitude_extent"] != None and config_dict["latitude_extent"] != None:
+    if (
+        config_dict["longitude_extent"] != None
+        and config_dict["latitude_extent"] != None
+    ):
         expt.longitude_extent = tuple(config_dict["longitude_extent"])
         expt.latitude_extent = tuple(config_dict["latitude_extent"])
     else:
