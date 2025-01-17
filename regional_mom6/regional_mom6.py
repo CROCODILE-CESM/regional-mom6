@@ -71,10 +71,12 @@ def convert_to_tpxo_tidal_constituents(tidal_constituents):
     }
 
     try:
-        constituent_indices = [tpxo_tidal_constituent_map[tc] for tc in tidal_constituents]
+        constituent_indices = [
+            tpxo_tidal_constituent_map[tc] for tc in tidal_constituents
+        ]
     except KeyError as e:
         raise ValueError(f"Invalid tidal constituent: {e.args[0]}")
-        
+
     return constituent_indices
 
 
@@ -110,7 +112,7 @@ def create_experiment_from_config(
     print("Setting Default Variables.....")
     expt.expt_name = config_dict["expt_name"]
 
-    if expt.longitude_extent != None and expt.latitude_extent != None:
+    if config_dict["longitude_extent"] != None and config_dict["latitude_extent"] != None:
         expt.longitude_extent = tuple(config_dict["longitude_extent"])
         expt.latitude_extent = tuple(config_dict["latitude_extent"])
     else:
@@ -136,7 +138,17 @@ def create_experiment_from_config(
     expt.mom_run_dir.mkdir(parents=True, exist_ok=True)
     expt.mom_input_dir.mkdir(parents=True, exist_ok=True)
 
-    config_params = ["resolution", "number_vertical_layers", "layer_thickness_ratio", "depth", "hgrid_type", "repeat_year_forcing", "minimum_depth", "tidal_constituents", "boundaries"]
+    config_params = [
+        "resolution",
+        "number_vertical_layers",
+        "layer_thickness_ratio",
+        "depth",
+        "hgrid_type",
+        "repeat_year_forcing",
+        "minimum_depth",
+        "tidal_constituents",
+        "boundaries",
+    ]
     for param in config_params:
         setattr(expt, param, config_dict[param])
 
@@ -713,10 +725,12 @@ class experiment:
                 )
             except FileNotFoundError:
                 if hgrid_path is None:
-                    raise FileNotFoundError(f"Horizontal grid {self.mom_input_dir}/hgrid.nc not found. Make sure `hgrid.nc`exists in {self.mom_input_dir} directory.")
+                    raise FileNotFoundError(
+                        f"Horizontal grid {self.mom_input_dir}/hgrid.nc not found. Make sure `hgrid.nc`exists in {self.mom_input_dir} directory."
+                    )
                 else:
                     raise FileNotFoundError(f"Horizontal grid {hgrid_path} not found.")
-                   
+
         else:
             if hgrid_path:
                 raise ValueError(
@@ -737,7 +751,9 @@ class experiment:
 
             except FileNotFoundError:
                 if vgrid_path is None:
-                    raise FileNotFoundError(f"Vertical grid {self.mom_input_dir}/vcoord.nc not found. Make sure `vcoord.nc`exists in {self.mom_input_dir} directory.")
+                    raise FileNotFoundError(
+                        f"Vertical grid {self.mom_input_dir}/vcoord.nc not found. Make sure `vcoord.nc`exists in {self.mom_input_dir} directory."
+                    )
                 else:
                     raise FileNotFoundError(f"Vertical grid {vgrid_path} not found.")
 
@@ -844,8 +860,10 @@ class experiment:
         try:
             val = merged_dict[input]
         except KeyError:
-            raise ValueError("Invalid direction or segment number for MOM6 rectangular orientation")
-        return val 
+            raise ValueError(
+                "Invalid direction or segment number for MOM6 rectangular orientation"
+            )
+        return val
 
     def _make_hgrid(self):
         """
@@ -983,7 +1001,6 @@ class experiment:
             )
         return all_files
 
-
     @property
     def tides_boundaries(self):
         """
@@ -1006,7 +1023,6 @@ class experiment:
         # datasets = [xr.open_dataset(file) for file in all_files]
         return all_files
 
-
     @property
     def era5(self):
         """
@@ -1023,7 +1039,6 @@ class experiment:
         # Open the files as xarray datasets
         # datasets = [xr.open_dataset(file) for file in all_files]
         return all_files
-
 
     @property
     def initial_condition(self):
@@ -1044,14 +1059,12 @@ class experiment:
 
         return all_files
 
-
     @property
     def bathymetry_property(self):
         """
         Finds the bathymetry file from disk, and prints the file path
         """
         return str(self.mom_input_dir / "bathymetry.nc")
-
 
     def write_config_file(self, path=None, export=True, quiet=False):
         """
@@ -1753,7 +1766,7 @@ class experiment:
                 segment_name="segment_{:03d}".format(
                     self.find_MOM6_rectangular_orientation(b)
                 ),
-                orientation=b, 
+                orientation=b,
                 startdate=self.date_range[0],
                 repeat_year_forcing=self.repeat_year_forcing,
             )
@@ -2377,7 +2390,9 @@ class experiment:
         # TODO Re-implement with package that works for this file type? or at least tidy up code
         MOM_layout_dict = self.read_MOM_file_as_dict("MOM_layout")
         if "MASKTABLE" in MOM_layout_dict:
-            MOM_layout_dict["MASKTABLE"]["value"] = mask_table or " # MASKTABLE = no mask table"
+            MOM_layout_dict["MASKTABLE"]["value"] = (
+                mask_table or " # MASKTABLE = no mask table"
+            )
         if (
             "LAYOUT" in MOM_layout_dict
             and "IO" not in MOM_layout_dict
@@ -2432,10 +2447,10 @@ class experiment:
             key_POSITION = key_start
 
             rect_MOM6_index_dir = {
-                "south":'"J=0,I=0:N',
-                "north":'"J=N,I=N:0',
-                "east":'"I=N,J=0:N',
-                "west":'"I=0,J=N:0'
+                "south": '"J=0,I=0:N',
+                "north": '"J=N,I=N:0',
+                "east": '"I=N,J=0:N',
+                "west": '"I=0,J=N:0',
             }
             index_str = rect_MOM6_index_dir[seg]
 
@@ -2452,13 +2467,26 @@ class experiment:
             file_num_obc = str(
                 self.find_MOM6_rectangular_orientation(seg)
             )  # 1,2,3,4 for rectangular boundaries, BUT if we have less than 4 segments we use the index to specific the number, but keep filenames as if we had four boundaries
-            MOM_override_dict[key_DATA][
-                "value"
-            ] = f'"U=file:forcing_obc_segment_00{file_num_obc}.nc(u),V=file:forcing_obc_segment_00{file_num_obc}.nc(v),SSH=file:forcing_obc_segment_00{file_num_obc}.nc(eta),TEMP=file:forcing_obc_segment_00{file_num_obc}.nc(temp),SALT=file:forcing_obc_segment_00{file_num_obc}.nc(salt)'
+
+            obc_string = (
+                f'"U=file:forcing_obc_segment_00{file_num_obc}.nc(u),'
+                f"V=file:forcing_obc_segment_00{file_num_obc}.nc(v),"
+                f"SSH=file:forcing_obc_segment_00{file_num_obc}.nc(eta),"
+                f"TEMP=file:forcing_obc_segment_00{file_num_obc}.nc(temp),"
+                f"SALT=file:forcing_obc_segment_00{file_num_obc}.nc(salt)"
+            )
+            MOM_override_dict[key_DATA]["value"] = obc_string
             if with_tides:
+                tides_addition = (
+                    f",Uamp=file:tu_segment_00{file_num_obc}.nc(uamp),"
+                    f"Uphase=file:tu_segment_00{file_num_obc}.nc(uphase),"
+                    f"Vamp=file:tu_segment_00{file_num_obc}.nc(vamp),"
+                    f"Vphase=file:tu_segment_00{file_num_obc}.nc(vphase),"
+                    f"SSHamp=file:tz_segment_00{file_num_obc}.nc(zamp),"
+                    f'SSHphase=file:tz_segment_00{file_num_obc}.nc(zphase)"'
+                )
                 MOM_override_dict[key_DATA]["value"] = (
-                    MOM_override_dict[key_DATA]["value"]
-                    + f',Uamp=file:tu_segment_00{file_num_obc}.nc(uamp),Uphase=file:tu_segment_00{file_num_obc}.nc(uphase),Vamp=file:tu_segment_00{file_num_obc}.nc(vamp),Vphase=file:tu_segment_00{file_num_obc}.nc(vphase),SSHamp=file:tz_segment_00{file_num_obc}.nc(zamp),SSHphase=file:tz_segment_00{file_num_obc}.nc(zphase)"'
+                    MOM_override_dict[key_DATA]["value"] + tides_addition
                 )
             else:
                 MOM_override_dict[key_DATA]["value"] = (
@@ -2485,13 +2513,9 @@ class experiment:
             MOM_override_dict["OBC_TIDE_CONSTITUENTS"]["value"] = (
                 '"' + ", ".join(self.tidal_constituents) + '"'
             )
-            MOM_override_dict["OBC_TIDE_REF_DATE"]["value"] = (
-                str(self.date_range[0].year)
-                + ", "
-                + str(self.date_range[0].month)
-                + ", "
-                + str(self.date_range[0].day)
-            )
+            MOM_override_dict["OBC_TIDE_REF_DATE"]["value"] = self.date_range[
+                0
+            ].strftime("%Y, %m, %d")
 
         for key, val in MOM_override_dict.items():
             if isinstance(val, dict):
