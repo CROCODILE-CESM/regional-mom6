@@ -42,4 +42,4 @@ Both regridding functions (regrid_velocity_tracers, regrid_tides) accept a param
 We then define each method with a bunch of if statements. Here are the processes:
 
 1. Given angle is the default method of accepting the hgrid's angle_dx
-2. Fred's method is the least code, and we simply swap out the hgrid angle with the generated one we calculate right where we do the rotation.
+2. The EXPAND_GRID method is the least code, and we simply swap out the hgrid angle with the generated one we calculate right where we do the rotation.
