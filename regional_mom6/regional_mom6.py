@@ -2521,7 +2521,7 @@ class experiment:
             ].strftime("%Y, %m, %d")
 
         for key, val in MOM_override_dict.items():
-            if isinstance(val, dict):
+            if isinstance(val, dict) and key != "original":
                 MOM_override_dict[key]["override"] = True
         self.write_MOM_file(MOM_input_dict)
         self.write_MOM_file(MOM_override_dict)
