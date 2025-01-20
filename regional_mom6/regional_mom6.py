@@ -3462,7 +3462,7 @@ class segment:
 
         ## Export Files ##
         ds.to_netcdf(
-            Path(self.outfolder / "forcing" / fname),
+            Path(self.outfolder  / fname),
             engine="netcdf4",
             encoding=encoding,
             unlimited_dims="time",
