@@ -1,12 +1,10 @@
 import numpy as np
-from pathlib import Path
 import dask.array as da
 import xarray as xr
 import xesmf as xe
 import subprocess
 from scipy.ndimage import binary_fill_holes
 import netCDF4
-from dask.diagnostics import ProgressBar
 import f90nml
 import datetime as dt
 import warnings
@@ -90,15 +88,16 @@ def create_experiment_from_config(
     create_hgrid_and_vgrid=True,
 ):
     """
-    Load an experiment variables from a config file and generate hgrid/vgrid.
-    Computer specific functionality eliminates the ability to pass file paths.
-    Basically another way to initialize. Sets a default folder of "mom_input/from_config" and "mom_run/from_config" unless specified
+    Load an experiment variables from a configuration file and generate the hgrid/vgrid.
+    Computer-specific functionality eliminates the ability to pass file paths.
+    Basically another way to initialize. Sets a default folder of "mom_input/from_config" and "mom_run/from_config" unless specified.
 
-    Args:
+    Arguments:
         config_file_path (str): Path to the config file.
         mom_input_folder (str): Path to the MOM6 input folder. Default is "mom_input/from_config".
         mom_run_folder (str): Path to the MOM6 run folder. Default is "mom_run/from_config".
-        create_hgrid_and_vgrid (bool): Whether to create the hgrid and vgrid. Default is True.
+        create_hgrid_and_vgrid (bool): Whether to create the hgrid and the vgrid. Default is True.
+
     Returns:
         experiment: An experiment object with the fields from the config loaded in.
     """
@@ -199,12 +198,13 @@ def longitude_slicer(data, longitude_extent, longitude_coords):
     - Finally re-add the correct multiple of 360 so the whole domain matches
       the target.
 
-    Args:
+    Arguments:
         data (xarray.Dataset): The global data you want to slice in longitude.
         longitude_extent (Tuple[float, float]): The target longitudes (in degrees)
             we want to slice to. Must be in increasing order.
         longitude_coords (Union[str, list[str]): The name or list of names of the
             longitude coordinates(s) in ``data``.
+
     Returns:
         xarray.Dataset: The sliced ``data``.
     """
@@ -297,16 +297,16 @@ def get_glorys_data(
     """
     Generates a bash script to download all of the required ocean forcing data.
 
-    Args:
+    Arguments:
         longitude_extent (tuple of floats): Westward and Eastward extents of the segment
         latitude_extent (tuple of floats): Southward and Northward extents of the segment
-        timerange (tule of datetime strings): Start and end of the segment in format %Y-%m-%d %H:%M:%S
-        segment_range (str): name of the segment (minus .nc extension, eg east_unprocessed)
-        download_path (str): Location of where this script is saved
+        timerange (tuple of datetime strings): Start and end of the segment, each in format %Y-%m-%d %H:%M:%S
+        segment_range (str): name of the segment (without the ``.nc`` extension, e.g., ``east_unprocessed``)
+        download_path (str): Location of where the script is saved
         modify_existing (bool): Whether to add to an existing script or start a new one
-        buffer (float): number of
     """
-    buffer = 0.24  # Pads downloads to ensure that interpolation onto desired domain doesn't fail. Default of 0.24 is twice Glorys cell width (12th degree)
+    buffer = 0.24  # Pads downloads to ensure that interpolation onto desired domain doesn't fail.
+    # Default is 0.24, just under three times the Glorys cell width (3 x 1/12 = 0.25).
 
     path = Path(download_path)
 
@@ -354,7 +354,7 @@ def hyperbolictan_thickness_profile(nlayers, ratio, total_depth):
     bottom-most layer to the top-most layer only departs from the prescribed ``ratio``
     by ±20%.
 
-    Args:
+    Arguments:
         nlayers (int): Number of vertical layers.
         ratio (float): The desired value of the ratio of bottom-most to
             the top-most layer thickness. Note that the final value of
@@ -461,7 +461,7 @@ def generate_rectangular_hgrid(lons, lats):
 
         Ensure both ``lons`` and ``lats`` are monotonically increasing.
 
-    Args:
+    Arguments:
         lons (numpy.array): All longitude points on the supergrid. Must be uniformly spaced.
         lats (numpy.array): All latitude points on the supergrid.
 
@@ -582,7 +582,7 @@ class experiment:
     The class can be used to generate the grids for a new experiment, or to read in
     an existing one (when ``read_existing_grids=True``; see argument description below).
 
-    Args:
+    Arguments:
         longitude_extent (Tuple[float]): Extent of the region in longitude (in degrees). For
             example: ``(40.5, 50.0)``.
         latitude_extent (Tuple[float]): Extent of the region in latitude (in degrees). For
@@ -1040,7 +1040,7 @@ class experiment:
         total ``depth`` parameters.
         (All these parameters are specified at the class level.)
 
-        Args:
+        Arguments:
             thicknesses (Optional[np.ndarray]): An array of layer thicknesses. If not provided,
                 the layer thicknesses are generated using the :func:`~hyperbolictan_thickness_profile`
                 function.
@@ -1079,13 +1079,14 @@ class experiment:
 
     def write_config_file(self, path=None, export=True, quiet=False):
         """
-        Write a configuration file for the experiment. This is a simple json file
-        that contains the expirment variable information to allow for easy pass off to other users, with a strict computer independence restriction.
-        It also makes information about the expirement readable, and is good for just printing out information about the experiment.
+        Write a json configuration file for the experiment. This file contains the experiment
+        variable information to allow for easy pass off to other users, with a strict computer
+        independence restriction. It also makes information about the expirement readable, and
+        is good for just printing out information about the experiment.
 
-        Args:
+        Arguments:
             path (str): Path to write the config file to. If not provided, the file is written to the ``mom_run_dir`` directory.
-            export (bool): If ``True`` (default), the configuration file is written to disk on the given path
+            export (bool): If ``True`` (default), the configuration file is written to disk on the given ``path``
             quiet (bool): If ``True``, no print statements are made.
         Returns:
             Dict: A dictionary containing the configuration information.
@@ -1140,8 +1141,8 @@ class experiment:
         Reads the initial condition from files in ``ic_path``, interpolates to the
         model grid, fixes up metadata, and saves back to the input directory.
 
-        Args:
-            raw_ic_path (Union[str, Path,list[str]]): Path(s) to raw initial condition file(s) to read in.
+        Arguments:
+            raw_ic_path (Union[str, Path, list[str]]): Path(s) to raw initial condition file(s) to read in.
             varnames (Dict[str, str]): Mapping from MOM6 variable/coordinate names to the names
                 in the input dataset. For example, ``{'xq': 'lonq', 'yh': 'lath', 'salt': 'so', ...}``.
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the initial condition.
@@ -1472,12 +1473,16 @@ class experiment:
 
     def get_glorys(self, raw_boundaries_path):
         """
-        This function is a wrapper for `get_glorys_data`, calling this function once for each of the rectangular boundary segments and the initial condition. For more complex boundary shapes, call `get_glorys_data` directly for each of your boundaries that aren't parallel to lines of constant latitude or longitude. For example, for an angled Northern boundary that spans multiple latitudes, you'll need to download a wider rectangle containing the entire boundary.
+        This is a wrapper that calls :func:`~get_glorys_data` once for each of the rectangular boundary segments
+        and the initial condition. For more complex boundary shapes, call :func:`~get_glorys_data` directly for
+        each of your boundaries that aren't parallel to lines of constant latitude or longitude. For example,
+        for an angled Northern boundary that spans multiple latitudes, we need to download a wider rectangle
+        containing the entire boundary.
 
-        args:
+        Arguments:
             raw_boundaries_path (str): Path to the directory containing the raw boundary forcing files.
             boundaries (List[str]): List of cardinal directions for which to create boundary forcing files.
-                Default is `["south", "north", "west", "east"]`.
+                Default is ``["south", "north", "west", "east"]``.
         """
 
         # Initial Condition
@@ -1572,21 +1577,23 @@ class experiment:
         rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
-        This function is a wrapper for `simple_boundary`. Given a list of up to four cardinal directions,
-        it creates a boundary forcing file for each one. Ensure that the raw boundaries are all saved in the same directory,
-        and that they are named using the format `east_unprocessed.nc`
+        This is a wrapper for :func:`~simple_boundary`. Given a list of up to four cardinal directions,
+        it creates a boundary forcing file for each one. Ensure that the raw boundaries are all saved
+        in the same directory, and that they are named using the format ``east_unprocessed.nc``.
 
-        Args:
+        Arguments:
             raw_boundaries_path (str): Path to the directory containing the raw boundary forcing files.
             varnames (Dict[str, str]): Mapping from MOM6 variable/coordinate names to the name in the
                 input dataset.
             boundaries (List[str]): List of cardinal directions for which to create boundary forcing files.
-                Default is `["south", "north", "west", "east"]`.
+                Default is ``["south", "north", "west", "east"]``.
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the boundary forcing.
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
-            boundary_type (str): Type of box around region. Currently, only ``'rectangular'`` or ``'curvilinear'`` is supported.
-            bathymetry_path (Optional[str]): Path to the bathymetry file. Default is None, in which case the BC is not masked.
-            rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is 'GIVEN_ANGLE'.
+            boundary_type (str): Type of box around region. Currently, only ``'rectangular'`` or ``'curvilinear'``
+                is supported.
+            bathymetry_path (Optional[str]): Path to the bathymetry file. Default is ``None``, in which case the
+                boundary condition is not masked.
+            rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is ``GIVEN_ANGLE``.
         """
         if not (boundary_type == "rectangular" or boundary_type == "curvilinear"):
             raise ValueError(
@@ -1633,10 +1640,9 @@ class experiment:
         rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
-        Here 'simple' refers to boundaries that are parallel to lines of constant longitude or latitude.
-        Set up a boundary forcing file for a given orientation.
+        Set up a boundary forcing file for a given ``orientation``.
 
-        Args:
+        Arguments:
             path_to_bc (str): Path to boundary forcing file. Ideally this should be a pre cut-out
                 netCDF file containing only the boundary region and 3 extra boundary points on either
                 side. Users can also provide a large dataset containing their entire domain but this
@@ -1649,8 +1655,10 @@ class experiment:
                 the ``MOM_input``.
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the boundary forcing.
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
-            bathymetry_path (str): Path to the bathymetry file. Default is None, in which case the BC is not masked
-            rotational_method (Optional[str]): Method to use for rotating the boundary velocities. Default is 'GIVEN_ANGLE'.
+            bathymetry_path (str): Path to the bathymetry file. Default is ``None``, in which case
+                the boundary condition is not masked.
+            rotational_method (Optional[str]): Method to use for rotating the boundary velocities.
+                Default is 'GIVEN_ANGLE'.
         """
 
         print(
@@ -1689,35 +1697,35 @@ class experiment:
         bathymetry_path=None,
         rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
-        """
-        We subset our tidal data and generate more boundary files!
+        """Subset the tidal data and generate more boundary files.
 
-        Args:
+        Arguments:
             path_to_td (str): Path to boundary tidal file.
-            tpxo_elevation_filepath: Filepath to the TPXO elevation product. Generally of the form h_tidalversion.nc
-            tpxo_velocity_filepath: Filepath to the TPXO velocity product. Generally of the form u_tidalversion.nc
+            tpxo_elevation_filepath: Filepath to the TPXO elevation product. Generally of the form ``h_tidalversion.nc``
+            tpxo_velocity_filepath: Filepath to the TPXO velocity product. Generally of the form ``u_tidalversion.nc``
             tidal_constituents: List of tidal constituents to include in the regridding. Default is set in the constructor
-            boundary_type (str): Type of boundary. Currently, only rectangle is supported. Here, rectangle refers to boundaries that are parallel to lines of constant longitude or latitude. Curvilinear is also suported.
-            bathymetry_path (str): Path to the bathymetry file. Default is None, in which case the BC is not masked
+            boundary_type (str): Type of boundary. Currently, only rectangle and curvilinear grids are supported.
+                Here, rectangle refers to grids with boundaries that are parallel to lines of constant longitude or latitude.
+            bathymetry_path (str): Path to the bathymetry file. Default is ``None``, in which case the boundary condition is not masked
             rotational_method (str): Method to use for rotating the tidal velocities. Default is 'GIVEN_ANGLE'.
+
         Returns:
-            .nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
+            netCDF files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
 
-        General Description:
-        This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
-        - Converted code for RM6 segment class
-        - Implemented Horizontal Subsetting
-        - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+        The tidal data functions are sourced from the GFDL NWA25 and modified so that:
+            - Converted code for regional-mom6 segment class
+            - Implemented horizontal subsetting.
+            - Combined all functions of NWA25 into a four function process (in the style of regional-mom6), i.e., ``expt.setup_tides_rectangular_boundaries``, ``coords``, ``segment.regrid_tides``, and ``segment.encode_tidal_files_and_output``.
 
-
-        Original Code was sourced from:
-        Author(s): GFDL, James Simkins, Rob Cermak, etc..
-        Year: 2022
-        Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
-        Version: N/A
-        Type: Python Functions, Source Code
-        Web Address: https://github.com/jsimkins2/nwa25
+        Code sourced from:
+            Author(s): GFDL, James Simkins, Rob Cermak, and contributors
+            Year: 2022
+            Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
+            Version: N/A
+            Type: Python Functions, Source Code
+            Web Address: https://github.com/jsimkins2/nwa25
         """
+
         if not (boundary_type == "rectangular" or boundary_type == "curvilinear"):
             raise ValueError(
                 "Only rectangular or curvilinear boundaries are supported by this method."
@@ -1760,7 +1768,7 @@ class experiment:
         times = xr.DataArray(
             pd.date_range(
                 self.date_range[0], periods=1
-            ),  # Import pandas for this shouldn't be a big deal b/c it's already required in rm6 dependencies
+            ),  # Import pandas for this shouldn't be a big deal b/c it's already required in regional-mom6 dependencies
             dims=["time"],
         )
         # Initialize or find boundary segment
@@ -1802,13 +1810,13 @@ class experiment:
         """
         Cut out and interpolate the chosen bathymetry and then fill inland lakes.
 
-        It's also possible to optionally fill narrow channels (see ``fill_channels``
-        below), although narrow channels are less of an issue for models that are
-        discretized on an Arakawa C grid, like MOM6.
+        Users can optionally fill narrow channels (see ``fill_channels`` keyword argument
+        below). Note, however, that narrow channels are less of an issue for models that
+        are discretized on an Arakawa C grid, like MOM6.
 
         Output is saved in the input directory of the experiment.
 
-        Args:
+        Arguments:
             bathymetry_path (str): Path to the netCDF file with the bathymetry.
             longitude_coordinate_name (Optional[str]): The name of the longitude coordinate in the bathymetry
                 dataset at ``bathymetry_path``. For example, for GEBCO bathymetry: ``'lon'`` (default).
@@ -1997,7 +2005,7 @@ class experiment:
         or fill in some channels, then call this function directly to read in the existing
         ``bathymetry_unfinished.nc`` file that should be in the input directory.
 
-        Args:
+        Arguments:
             fill_channels (Optional[bool]): Whether to fill in
                 diagonal channels. This removes more narrow inlets,
                 but can also connect extra islands to land. Default: ``False``.
@@ -2259,7 +2267,7 @@ class experiment:
         Set up the run directory for MOM6. Either copy a pre-made set of files, or modify
         existing files in the 'rundir' directory for the experiment.
 
-        Args:
+        Arguments:
             surface_forcing (Optional[str]): Specify the choice of surface forcing, one
                 of: ``'jra'`` or ``'era5'``. If not prescribed then constant fluxes are used.
             using_payu (Optional[bool]): Whether or not to use payu (https://github.com/payu-org/payu)
@@ -2324,6 +2332,9 @@ class experiment:
                 raise ValueError(
                     "No files with 'tu' in their names found in the forcing or input directory. If you meant to use tides, please run the setup_tides_rectangle_boundaries method first. That does output some tidal files."
                 )
+
+        # Set local var
+        ncpus = None
 
         # 3 different cases to handle:
         #   1. User is creating a new run directory from scratch. Here we copy across all files and modify.
@@ -2597,7 +2608,7 @@ class experiment:
         Change a parameter in the MOM_input or MOM_override file. Returns original value if there was one.
         If delete is specified, ONLY MOM_override version will be deleted. Deleting from MOM_input is not safe.
         If the parameter does not exist, it will be added to the file. if delete is set to True, the parameter will be removed.
-        Args:
+        Arguments:
             param_name (str):
                 Parameter name we are working with
             param_value (Optional[str]):
@@ -2735,7 +2746,7 @@ class experiment:
                         )
 
         # Add new fields
-        lines.append("! === Added with RM6 ===\n")
+        lines.append("! === Added with regional-mom6 ===\n")
         for key in MOM_file_dict.keys():
             if key not in original_MOM_file_dict.keys():
                 if MOM_file_dict[key]["override"]:
@@ -2787,7 +2798,7 @@ class experiment:
         We need the following fields: "2t", "10u", "10v", "sp", "2d", "msdwswrf",
         "msdwlwrf", "lsrr", and "crr".
 
-        Args:
+        Arguments:
             era5_path (str): Path to the ERA5 forcing files. Specifically, the single-level
                 reanalysis product. For example, ``'SOMEPATH/era5/single-levels/reanalysis'``
         """
@@ -2901,7 +2912,7 @@ class segment:
     Note:
         Only supports z-star (z*) vertical coordinate.
 
-    Args:
+    Arguments:
         hgrid (xarray.Dataset): The horizontal grid used for domain.
         infile (Union[str, Path]): Path to the raw, unprocessed boundary segment.
         outfolder (Union[str, Path]): Path to folder where the model inputs will
@@ -2991,9 +3002,10 @@ class segment:
 
     def regrid_velocity_tracers(self, rotational_method=rot.RotationMethod.GIVEN_ANGLE):
         """
-        Cut out and interpolate the velocities and tracers
-        Args:
-        rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
+        Cut out and interpolate the velocities and tracers.
+
+        Arguments:
+            rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, ``GIVEN_ANGLE``, works even with non-rotated grids.
         """
 
         rawseg = xr.open_dataset(self.infile, decode_times=False, engine="netcdf4")
@@ -3252,35 +3264,35 @@ class segment:
         rotational_method=rot.RotationMethod.GIVEN_ANGLE,
     ):
         """
-        This function:
-        Regrids and interpolates the tidal data for MOM6, originally inspired by GFDL NWA25 repo code & edited by Ashley.
-        - Read in raw tidal data (all constituents)
-        - Perform minor transformations/conversions
-        - Regridded the tidal elevation, and tidal velocity
-        - Encoding the output
+        Regrids and interpolates the tidal data for MOM6. Steps include:
 
-        Args:
-            infile_td (str): Raw Tidal File/Dir
-            tpxo_v, tpxo_u, tpxo_h (xarray.Dataset): Specific adjusted for MOM6 tpxo datasets (Adjusted with setup_tides)
-            times (pd.DateRange): The start date of our model period
-            rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids
-        Returns:
-            .nc files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
+        - Read raw tidal data (all constituents)
+        - Perform minor transformations/conversions
+        - Regrid the tidal elevation, and tidal velocity
+        - Encode the output
+
+        Method was inspired by:
+            Author(s): GFDL, James Simkins, Rob Cermak, and contributors
+            Year: 2022
+            Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
+            Type: Python Functions, Source Code
+            Web Address: https://github.com/jsimkins2/nwa25
 
         General Description:
-        This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
-        - Converted code for RM6 segment class
-        - Implemented Horizontal Subsetting
-        - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, segment.coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+            The tidal data functions sourced from the GFDL's code above were changed in the following ways:
 
+            - Converted code for regional-mom6 segment class
+            - Implemented horizontal subsetting
+            - Combined all functions of NWA25 into a four function process (in the style of regional-mom6), that is: ``expt.setup_tides_rectangular_boundaries``, ``segment.coords``, ``segment.regrid_tides``, ``segment.encode_tidal_files_and_output``.
 
-        Original Code was sourced from:
-        Author(s): GFDL, James Simkins, Rob Cermak, etc..
-        Year: 2022
-        Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
-        Version: N/A
-        Type: Python Functions, Source Code
-        Web Address: https://github.com/jsimkins2/nwa25
+        Arguments:
+            infile_td (str): Raw Tidal File/Dir
+            tpxo_v, tpxo_u, tpxo_h (xarray.Dataset): Specific adjusted for MOM6 tpxo datasets (Adjusted with :func:`~setup_tides`)
+            times (pd.DateRange): The start date of our model period
+            rotational_method (rot.RotationMethod): The method to use for rotation of the velocities. Currently, the default method, GIVEN_ANGLE, works even with non-rotated grids.
+
+        Returns:
+            netCDF files: Regridded tidal velocity and elevation files in 'inputdir/forcing'
         """
 
         # Establish Coords
@@ -3418,35 +3430,36 @@ class segment:
     def encode_tidal_files_and_output(self, ds, filename):
         """
         This function:
+
         - Expands the dimensions (with the segment name)
         - Renames some dimensions to be more specific to the segment
         - Provides an output file encoding
         - Exports the files.
 
-        Args:
+        Arguments:
             self.outfolder (str/path): The output folder to save the tidal files into
             dataset (xarray.Dataset): The processed tidal dataset
             filename (str): The output file name
+
         Returns:
-            .nc files: Regridded [FILENAME] files in 'self.outfolder/[filename]_[segmentname].nc'
+            netCDF files: Regridded [FILENAME] files in 'self.outfolder/[filename]_[segmentname].nc'
 
         General Description:
-        This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
-        - Converted code for RM6 segment class
-        - Implemented Horizontal Subsetting
-        - Combined all functions of NWA25 into a four function process (in the style of rm6) (expt.setup_tides_rectangular_boundaries, coords, segment.regrid_tides, segment.encode_tidal_files_and_output)
+            This tidal data functions are sourced from the GFDL NWA25 and changed in the following ways:
 
+            - Converted code for regional-mom6 segment class
+            - Implemented horizontal Subsetting
+            - Combined all functions of NWA25 into a four function process (in the style of regional-mom6), that is: ``expt.setup_tides_rectangular_boundaries``, ``segment.coords``, ``segment.regrid_tides``, ``segment.encode_tidal_files_and_output``.
 
-        Original Code was sourced from:
-        Author(s): GFDL, James Simkins, Rob Cermak, etc..
-        Year: 2022
-        Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
-        Version: N/A
-        Type: Python Functions, Source Code
-        Web Address: https://github.com/jsimkins2/nwa25
-
-
+        Code sourced from:
+            Author(s): GFDL, James Simkins, Rob Cermak, and contributors
+            Year: 2022
+            Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
+            Version: N/A
+            Type: Python Functions, Source Code
+            Web Address: https://github.com/jsimkins2/nwa25
         """
+
         coords = rgd.coords(self.hgrid, self.orientation, self.segment_name)
 
         ## Expand Tidal Dimensions ##

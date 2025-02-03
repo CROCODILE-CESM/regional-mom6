@@ -1,8 +1,8 @@
 """
-Helper Functions to take the user though the regridding of boundary conditions and encoding for MOM6. Built for RM6
+Custom-built helper functions to regrid the boundary conditions and encoding for MOM6.
 
 Steps:
-1. Initial Regridding -> Find the boundary of the hgrid, and regrid the forcing variables to that boundary. Call (initial_regridding) and then use the xesmf Regridder with whatever datasets you need.
+1. Initial Regridding -> Find the boundary of the ``hgrid``, and regrid the forcing variables to that boundary. Call (``initial_regridding``) and then use the xesmf.Regridder with whatever datasets you need.
 2. Work on some data issues
 
     1. For temperature - Make sure it's in Celsius
@@ -21,9 +21,6 @@ Steps:
 11. Re-add the "perpendicular" dimension
 12. ....Add  layer thickness of dz to the vertical forcings
 13. Add to encoding_dict a fill value(_FillValue) and zlib, dtype, for time, lat long, ....and each variable (no type needed though)
-
-
-
 """
 
 import xesmf as xe
@@ -46,25 +43,26 @@ def coords(
     angle_variable_name="angle_dx",
 ) -> xr.Dataset:
     """
-    This function:
-    Allows us to call the coords for use in the xesmf.Regridder in the regrid_tides function. self.coords gives us the subset of the hgrid based on the orientation.
+    Allows us to call the coords for use in the ``xesmf.Regridder`` in the :func:`~regrid_tides` function.
+    ``self.coords`` gives us the subset of the ``hgrid`` based on the orientation.
 
-    Args:
-        hgrid (xr.Dataset): The hgrid dataset
+    Arguments:
+        hgrid (xr.Dataset): The horizontal grid dataset
         orientation (str): The orientation of the boundary
         segment_name (str): The name of the segment
-        coords_at_t_points (bool, optional): Whether to return the boundary t-points instead of the q/u/v of a general boundary for rotation. Defaults to False.
+        coords_at_t_points (bool, optional): Whether to return the boundary t-points instead of
+    the q/u/v of a general boundary for rotation. Default: ``False``
+
     Returns:
         xr.Dataset: The correct coordinate space for the orientation
 
-    Code adapted from:
-    Author(s): GFDL, James Simkins, Rob Cermak, etc..
-    Year: 2022
-    Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
-    Version: N/A
-    Type: Python Functions, Source Code
-    Web Address: https://github.com/jsimkins2/nwa25
-
+    Code adapted from::
+        Author(s): GFDL, James Simkins, Rob Cermak, etc..
+        Year: 2022
+        Title: "NWA25: Northwest Atlantic 1/25th Degree MOM6 Simulation"
+        Version: N/A
+        Type: Python Functions, Source Code
+        Web Address: https://github.com/jsimkins2/nwa25
     """
 
     dataset_to_get_coords = None
@@ -150,7 +148,7 @@ def coords(
 
 def get_hgrid_arakawa_c_points(hgrid: xr.Dataset, point_type="t") -> xr.Dataset:
     """
-    Get the Arakawa C points from the Hgrid, originally written by Fred (Castruccio) and moved to RM6
+    Get the Arakawa C points from the Hgrid, originally written by Fred (Castruccio) and moved to regional-mom6
     Parameters
     ----------
     hgrid: xr.Dataset

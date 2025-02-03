@@ -85,17 +85,16 @@ The bibtex entry for the paper is:
 
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: Contents:
 
    installation
    demos
    mom6-file-structure-primer
-   rm6_workflow
-   angle_calc
+   regional-mom6-workflow
+   angle_calculation
    api
-   contributing
-   docker_image_dev
+   contributing/index
    
 
 Indices and tables

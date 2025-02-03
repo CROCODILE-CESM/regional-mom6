@@ -95,7 +95,7 @@ def latlon_to_cartesian(lat, lon, R=1):
     """Convert latitude and longitude (in degrees) to Cartesian coordinates on
     a sphere of radius ``R``. By default ``R = 1``.
 
-    Args:
+    Arguments:
         lat (float): Latitude (in degrees).
         lon (float): Longitude (in degrees).
         R (float): The radius of the sphere; default: 1.
@@ -132,7 +132,7 @@ def quadrilateral_areas(lat, lon, R=1):
     By default, ``R = 1``. The quadrilaterals are formed by constant latitude and
     longitude lines on the ``lat``-``lon`` grid provided.
 
-    Args:
+    Arguments:
         lat (numpy.array): Array of latitude points (in degrees).
         lon (numpy.array): Array of longitude points (in degrees).
         R (float): The radius of the sphere; default: 1.
@@ -185,37 +185,36 @@ def quadrilateral_areas(lat, lon, R=1):
 
 def ap2ep(uc, vc):
     """Convert complex tidal u and v to tidal ellipse.
-    Adapted from ap2ep.m for matlab
-    Original copyright notice:
-    %Authorship Copyright:
-    %
-    %    The author retains the copyright of this program, while  you are welcome
-    % to use and distribute it as long as you credit the author properly and respect
-    % the program name itself. Particularly, you are expected to retain the original
-    % author's name in this original version or any of its modified version that
-    % you might make. You are also expected not to essentially change the name of
-    % the programs except for adding possible extension for your own version you
-    % might create, e.g. ap2ep_xx is acceptable.  Any suggestions are welcome and
-    % enjoy my program(s)!
-    %
-    %
-    %Author Info:
-    %_______________________________________________________________________
-    %  Zhigang Xu, Ph.D.
-    %  (pronounced as Tsi Gahng Hsu)
-    %  Research Scientist
-    %  Coastal Circulation
-    %  Bedford Institute of Oceanography
-    %  1 Challenge Dr.
-    %  P.O. Box 1006                    Phone  (902) 426-2307 (o)
-    %  Dartmouth, Nova Scotia           Fax    (902) 426-7827
-    %  CANADA B2Y 4A2                   email xuz@dfo-mpo.gc.ca
-    %_______________________________________________________________________
-    %
-    % Release Date: Nov. 2000, Revised on May. 2002 to adopt Foreman's northern semi
-    % major axis convention.
 
-    Args:
+    Adapted from ap2ep.m for Matlab. Copyright notice::
+
+        Authorship:
+
+        The author retains the copyright of this program, while  you are welcome
+        to use and distribute it as long as you credit the author properly and respect
+        the program name itself. Particularly, you are expected to retain the original
+        author's name in this original version or any of its modified version that
+        you might make. You are also expected not to essentially change the name of
+        the programs except for adding possible extension for your own version you
+        might create, e.g. ap2ep_xx is acceptable.  Any suggestions are welcome and
+        enjoy my program(s)!
+
+        Author Info:
+
+        Zhigang Xu, Ph.D.
+        (pronounced as Tsi Gahng Hsu)
+        Research Scientist
+        Coastal Circulation
+        Bedford Institute of Oceanography
+        1 Challenge Dr.
+        P.O. Box 1006                    Phone  (902) 426-2307 (o)
+        Dartmouth, Nova Scotia           Fax    (902) 426-7827
+        CANADA B2Y 4A2                   email xuz@dfo-mpo.gc.ca
+
+        Release Date: Nov. 2000, Revised on May. 2002 to adopt Foreman's northern semi
+        major axis convention.
+
+    Arguments:
         uc: complex tidal u velocity
         vc: complex tidal v velocity
 
@@ -241,37 +240,36 @@ def ap2ep(uc, vc):
 
 def ep2ap(SEMA, ECC, INC, PHA):
     """Convert tidal ellipse to real u and v amplitude and phase.
-    Adapted from ep2ap.m for matlab.
-    Original copyright notice:
-    %Authorship Copyright:
-    %
-    %    The author of this program retains the copyright of this program, while
-    % you are welcome to use and distribute this program as long as you credit
-    % the author properly and respect the program name itself. Particularly,
-    % you are expected to retain the original author's name in this original
-    % version of the program or any of its modified version that you might make.
-    % You are also expected not to essentially change the name of the programs
-    % except for adding possible extension for your own version you might create,
-    % e.g. app2ep_xx is acceptable.  Any suggestions are welcome and enjoy my
-    % program(s)!
-    %
-    %
-    %Author Info:
-    %_______________________________________________________________________
-    %  Zhigang Xu, Ph.D.
-    %  (pronounced as Tsi Gahng Hsu)
-    %  Research Scientist
-    %  Coastal Circulation
-    %  Bedford Institute of Oceanography
-    %  1 Challenge Dr.
-    %  P.O. Box 1006                    Phone  (902) 426-2307 (o)
-    %  Dartmouth, Nova Scotia           Fax    (902) 426-7827
-    %  CANADA B2Y 4A2                   email xuz@dfo-mpo.gc.ca
-    %_______________________________________________________________________
-    %
-    %Release Date: Nov. 2000
 
-    Args:
+    Adapted from ep2ap.m for Matlab. Copyright notice::
+
+        Authorship:
+
+        The author of this program retains the copyright of this program, while
+        you are welcome to use and distribute this program as long as you credit
+        the author properly and respect the program name itself. Particularly,
+        you are expected to retain the original author's name in this original
+        version of the program or any of its modified version that you might make.
+        You are also expected not to essentially change the name of the programs
+        except for adding possible extension for your own version you might create,
+        e.g. app2ep_xx is acceptable.  Any suggestions are welcome and enjoy my
+        program(s)!
+
+        Author Info:
+
+        Zhigang Xu, Ph.D.
+        (pronounced as Tsi Gahng Hsu)
+        Research Scientist
+        Coastal Circulation
+        Bedford Institute of Oceanography
+        1 Challenge Dr.
+        P.O. Box 1006                    Phone  (902) 426-2307 (o)
+        Dartmouth, Nova Scotia           Fax    (902) 426-7827
+        CANADA B2Y 4A2                   email xuz@dfo-mpo.gc.ca
+
+        Release Date: Nov. 2000
+
+    Arguments:
         SEMA: semi-major axis
         ECC: eccentricity
         INC: inclination [radians]
@@ -279,7 +277,6 @@ def ep2ap(SEMA, ECC, INC, PHA):
 
     Returns:
         (u amplitude, u phase [radians], v amplitude, v phase [radians])
-
     """
     Wp = (1 + ECC) / 2.0 * SEMA
     Wm = (1 - ECC) / 2.0 * SEMA
@@ -324,11 +321,12 @@ def setup_logger(
 
 def rotate_complex(u, v, radian_angle):
     """
-    Rotate velocities to grid orientation using complex number math (Same as rotate)
-    Args:
+    Rotate velocities to grid orientation using complex number math (Same as :func:`rotate`.)
+
+    Arguments:
         u (xarray.DataArray): The u-component of the velocity.
         v (xarray.DataArray): The v-component of the velocity.
-        radian_angle (xarray.DataArray): The angle of the grid in RADIANS
+        radian_angle (xarray.DataArray): The angle of the grid in radians.
 
     Returns:
         Tuple[xarray.DataArray, xarray.DataArray]: The rotated u and v components of the velocity.
@@ -349,10 +347,11 @@ def rotate_complex(u, v, radian_angle):
 def rotate(u, v, radian_angle):
     """
     Rotate the velocities to the grid orientation.
-    Args:
+
+    Arguments:
         u (xarray.DataArray): The u-component of the velocity.
         v (xarray.DataArray): The v-component of the velocity.
-        radian_angle (xarray.DataArray): The angle of the grid in RADIANS
+        radian_angle (xarray.DataArray): The angle of the grid in radians.
 
     Returns:
         Tuple[xarray.DataArray, xarray.DataArray]: The rotated u and v components of the velocity.
@@ -365,11 +364,11 @@ def rotate(u, v, radian_angle):
 
 def is_rectilinear_hgrid(hgrid: xr.Dataset, rtol: float = 1e-3) -> bool:
     """
-    Check if the hgrid is a rectilinear grid. From mom6_bathy.grid.is_rectangular by Alper (Altuntas
-    )
-    Check if the grid is a rectangular lat-lon grid by comparing the first and last rows and columns of the tlon and tlat arrays.
+    Check if the ``hgrid`` is a rectilinear grid by comparing the first and last rows and columns of the tlon and tlat arrays.
 
-    Args:
+    From ``mom6_bathy.grid.is_rectangular`` by Alper (Altuntas).
+
+    Arguments:
         hgrid (xarray.Dataset): The horizontal grid dataset.
         rtol (float): Relative tolerance. Default is 1e-3.
     """
