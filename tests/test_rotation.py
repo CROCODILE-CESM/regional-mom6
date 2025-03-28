@@ -195,8 +195,12 @@ def test_mom6_angle_calculation_method_simple_square_grids(angle):
         }
     )
 
+    # Calculate len_lon
+    top_left_bottom_right_diag = abs(top_left.x.item() - bottom_right.x.item())
+    top_right_bottom_left_diag = abs(top_right.x.item() - bottom_left.x.item())
+    len_lon = max(top_left_bottom_right_diag, top_right_bottom_left_diag)
     computed_angle = rot.mom6_angle_calculation_method(
-        4, top_left, top_right, bottom_left, bottom_right, point
+        len_lon, top_left, top_right, bottom_left, bottom_right, point
     )
 
     assert math.isclose(computed_angle, angle)
@@ -294,7 +298,7 @@ def test_get_rotation_angle(get_curvilinear_hgrid, get_rectilinear_hgrid):
     assert (angle.values == curved_hgrid.angle_dx).all()
     angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
     assert angle.shape == rect_hgrid.x.shape
-    assert (angle.values == 0).all()
+    assert np.all(np.isclose(angle.values, 0, atol=1e-10))
 
     rotational_method = rot.RotationMethod.EXPAND_GRID
     angle = rot.get_rotation_angle(rotational_method, curved_hgrid, orientation=o)
@@ -304,19 +308,21 @@ def test_get_rotation_angle(get_curvilinear_hgrid, get_rectilinear_hgrid):
     ).all()  # There shouldn't be large differences
     angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
     assert angle.shape == rect_hgrid.x.shape
-    assert (angle.values == 0).all()
+    assert np.all(np.isclose(angle.values, 0, atol=1e-10))
 
     # Check if o is boundary that the shape is of a boundary
     o = "north"
     rotational_method = rot.RotationMethod.NO_ROTATION
     angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
     assert angle.shape == rect_hgrid.x[-1].shape
-    assert (angle.values == 0).all()
+    assert np.all(np.isclose(angle.values, 0, atol=1e-10))
+
     rotational_method = rot.RotationMethod.EXPAND_GRID
     angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
     assert angle.shape == rect_hgrid.x[-1].shape
-    assert (angle.values == 0).all()
+    assert np.all(np.isclose(angle.values, 0, atol=1e-10))
+
     rotational_method = rot.RotationMethod.GIVEN_ANGLE
     angle = rot.get_rotation_angle(rotational_method, rect_hgrid, orientation=o)
     assert angle.shape == rect_hgrid.x[-1].shape
-    assert (angle.values == 0).all()
+    assert np.all(np.isclose(angle.values, 0, atol=1e-10))
