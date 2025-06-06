@@ -1696,6 +1696,7 @@ class experiment:
         positive_down=False,
         write_to_file=True,
         regridding_method=None,
+        manual_ESMF = False,
     ):
         """
         Cut out and interpolate the chosen bathymetry and then fill inland lakes.
@@ -1821,6 +1822,10 @@ class experiment:
                 engine="netcdf4",
             )
             empty_bathy.close()
+            
+        if manual_ESMF:
+            print("\n\nSkipping automatic regridding with python. Follow manual regridding instructions.\n\n")
+            return None
 
         bathymetry_output = bathymetry_output.load()
         print(
