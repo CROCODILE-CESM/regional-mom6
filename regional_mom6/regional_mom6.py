@@ -1696,10 +1696,11 @@ class experiment:
         positive_down=False,
         write_to_file=True,
         regridding_method=None,
-        manual_ESMF = False,
     ):
         """
-        Cut out and interpolate the chosen bathymetry and then fill inland lakes.
+        Setup_bathymetry wraps around three subroutines: config_bathymetry --> regrid_bathymetry --> tidy_bathymetry. 
+        You can specify which pieces of this process to execute within setup_bathymetry, but importantly each step 
+        is dependent on the last (e.g. cannot call regrid_bathymetry without first calling config_bathymetry). 
 
         Users can optionally fill narrow channels (see ``fill_channels`` keyword argument
         below). Note, however, that narrow channels are less of an issue for models that
@@ -1708,7 +1709,7 @@ class experiment:
         Output is saved in the input directory of the experiment.
 
         Arguments:
-            bathymetry_path (str): Path to the netCDF file with the bathymetry.
+            bathymetry_path (str): Path to the netCDF file with the original bathymetry.
             longitude_coordinate_name (Optional[str]): The name of the longitude coordinate in the bathymetry
                 dataset at ``bathymetry_path``. For example, for GEBCO bathymetry: ``'lon'`` (default).
             latitude_coordinate_name (Optional[str]): The name of the latitude coordinate in the bathymetry
@@ -1723,9 +1724,66 @@ class experiment:
             write_to_file (Optional[bool]): Whether to write the bathymetry to a file. Default: ``True``.
             regridding_method (Optional[str]): The type of regridding method to use. Defaults to self.regridding_method
         """
-        if regridding_method is None:
-            regridding_method = self.regridding_method
+        
+        bathymetry_output, empty_bathy = self.config_bathymetry(
+            bathymetry_path=bathymetry_path,
+            longitude_coordinate_name=longitude_coordinate_name,
+            latitude_coordinate_name=latitude_coordinate_name,
+            vertical_coordinate_name=vertical_coordinate_name,
+            write_to_file=write_to_file
+            )
+        
+        bathymetry = self.regrid_bathymetry(
+            bathymetry_output=bathymetry_output,
+            empty_bathy=empty_bathy,
+            regridding_method=regridding_method,
+            write_to_file=write_to_file
+        )
+        
+        final_bathymetry = self.tidy_bathymetry(
+            fill_channels=fill_channels,
+            positive_down=positive_down,
+            bathymetry=bathymetry,
+            write_to_file=write_to_file,
+            vertical_coordinate_name=
+        )
+        
+        print(
+            "Regridding successful! Now calling `tidy_bathymetry` method for some finishing touches..."
+        )
 
+        print("Setup bathymetry has finished successfully.")
+        return final_bathymetry
+        
+        
+    def config_bathymetry(
+        self,
+        bathymetry_path,
+        longitude_coordinate_name="lon",
+        latitude_coordinate_name="lat",
+        vertical_coordinate_name="elevation",
+        write_to_file=True,
+        ):
+        """
+        Sets up necessary objects/files for regridding bathymetry. Can be flexibly used with 
+        experiment.regrid_bathymetry() or user can manually regrid with ESMF_regrid. 
+
+        If manual regridding is necessary, write_to_file must be set to True. 
+
+        Arguments:
+            bathymetry_path (str): Path to netCDF file with bathymetry data.
+            longitude_coordinate_name (Optional[str]): The name of the longitude coordinate in the bathymetry
+                dataset at ``bathymetry_path``. For example, for GEBCO bathymetry: ``'lon'`` (default).
+            latitude_coordinate_name (Optional[str]): The name of the latitude coordinate in the bathymetry
+                dataset at ``bathymetry_path``. For example, for GEBCO bathymetry: ``'lat'`` (default).
+            vertical_coordinate_name (Optional[str]): The name of the vertical coordinate in the bathymetry
+                dataset at ``bathymetry_path``. For example, for GEBCO bathymetry: ``'elevation'`` (default).
+            write_to_file (Optional[bool]): Files saved to ``experiment.mom_input_dir``. Defaults to ``True``. Must be set to true if using manual regridding methods with ESMF_regrid. 
+                
+        Returns:
+            (``bathymetry_output``,``empty_bathy``) (tuple of Datasets): where ``bathymetry_output`` is the original bathymetry data with proper metadata and attributes and ``empty_bathy`` is a template for the regridder.
+        """
+        
         ## Convert the provided coordinate names into a dictionary mapping to the
         ## coordinate names that MOM6 expects.
         coordinate_names = {
@@ -1823,11 +1881,34 @@ class experiment:
             )
             empty_bathy.close()
             
-        if manual_ESMF:
-            print("\n\nSkipping automatic regridding with python. Follow manual regridding instructions.\n\n")
-            return None
+        return (bathymetry_output, empty_bathy)
+    
+    def regrid_bathymetry(
+        self,
+        bathymetry_output,
+        empty_bathy,
+        regridding_method = None,
+        write_to_file = True,
+        ):
+        """
+        Regrids the bathymetry given ``bathymetry_output`` which contains the original bathymetry and ``empty_bathy`` which is a template for the regridded product. 
+        Uses xESMF for regridding.
 
+        Args:
+            bathymetry_output (Xarray Dataset): Refactor of original bathymetry with proper  metadata and structure for ESMF regridding. 
+            empty_bathy (Xarray Dataset): Template for the regridded bathymetry regridding_method: (Optional[str]) The type of regridding method to use. Defaults to self.regridding_method. 
+            write_to_file (Optional[bool]): Files saved to ``experiment.mom_input_dir`` Defaults to ``True``. Must be set to true if using manual regridding methods with ESMF_regrid. 
+
+        Returns:
+            regridded_bathymetry (Dataset): Still needs to be cleaned and processed
+            with ``experiment.tidy_bathymetry``. 
+        """
+        
+        if regridding_method is None:
+            regridding_method = self.regridding_method
+            
         bathymetry_output = bathymetry_output.load()
+        
         print(
             "Begin regridding bathymetry...\n\n"
             + f"Original bathymetry size: {bathymetry_output.nbytes/1e6:.2f} Mb\n"
@@ -1840,35 +1921,29 @@ class experiment:
             + "For details see https://xesmf.readthedocs.io/en/latest/large_problems_on_HPC.html\n\n"
             + "Afterwards, we run the 'expt.tidy_bathymetry' method to skip the expensive interpolation step, and finishing metadata, encoding and cleanup.\n\n\n"
         )
+        
         regridder = rgd.create_regridder(
             bathymetry_output, empty_bathy, locstream_out=False
         )
+        
         bathymetry = regridder(bathymetry_output)
+        
         if write_to_file:
             bathymetry.to_netcdf(
                 self.mom_input_dir / "bathymetry_unfinished.nc",
                 mode="w",
                 engine="netcdf4",
             )
-        print(
-            "Regridding successful! Now calling `tidy_bathymetry` method for some finishing touches..."
-        )
-
-        print("setup bathymetry has finished successfully.")
-        return self.tidy_bathymetry(
-            fill_channels,
-            positive_down,
-            bathymetry=bathymetry,
-            write_to_file=write_to_file,
-        )
+            
+        return bathymetry
 
     def tidy_bathymetry(
         self,
         fill_channels=False,
         positive_down=False,
-        vertical_coordinate_name="depth",
         bathymetry=None,
         write_to_file=True,
+        vertical_coordinate_name="depth",
         longitude_coordinate_name="lon",
         latitude_coordinate_name="lat",
     ):
@@ -1881,6 +1956,9 @@ class experiment:
         If the bathymetry is already regridded and what is left to be done is fixing the metadata
         or fill in some channels, then :func:`~tidy_bathymetry` directly can read the existing
         ``bathymetry_unfinished.nc`` file that should be in the input directory.
+        
+        **Note:** there are optional arguments for each of the coordinate names which should 
+        only be used if you have manually regridded and your output has different coordinates.
 
         Arguments:
             fill_channels (Optional[bool]): Whether to fill in diagonal channels.
@@ -1888,17 +1966,13 @@ class experiment:
                 Default: ``False``.
             positive_down (Optional[bool]): If ``False`` (default), assume that
                 bathymetry vertical coordinate is positive down, as is the case in GEBCO for example.
-            bathymetry (Optional[xr.Dataset]): The bathymetry dataset to tidy up. If not provided,
+            bathymetry (Optional[Xarray Dataset]): The bathymetry dataset to tidy up. If not provided,
                 it will read the bathymetry from the file ``bathymetry_unfinished.nc`` in the input directory
                 that was created by :func:`~setup_bathymetry`.
         """
 
         ## reopen bathymetry to modify
-        print(
-            "Tidy bathymetry: Reading in regridded bathymetry to fix up metadata...",
-            end="",
-        )
-        if read_bathy_from_file := bathymetry is None:
+        if bathymetry is None:
             bathymetry = xr.open_dataset(
                 self.mom_input_dir / "bathymetry_unfinished.nc", engine="netcdf4"
             )
