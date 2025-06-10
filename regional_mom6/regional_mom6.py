@@ -1725,13 +1725,14 @@ class experiment:
             regridding_method (Optional[str]): The type of regridding method to use. Defaults to self.regridding_method
         """
         
+        print("Configuring bathymetry files.")
         bathymetry_output, empty_bathy = self.config_bathymetry(
             bathymetry_path=bathymetry_path,
             longitude_coordinate_name=longitude_coordinate_name,
             latitude_coordinate_name=latitude_coordinate_name,
             vertical_coordinate_name=vertical_coordinate_name,
             write_to_file=write_to_file
-            )
+        )
         
         bathymetry = self.regrid_bathymetry(
             bathymetry_output=bathymetry_output,
@@ -1745,14 +1746,9 @@ class experiment:
             positive_down=positive_down,
             bathymetry=bathymetry,
             write_to_file=write_to_file,
-            vertical_coordinate_name=
-        )
-        
-        print(
-            "Regridding successful! Now calling `tidy_bathymetry` method for some finishing touches..."
         )
 
-        print("Setup bathymetry has finished successfully.")
+        print("Setup bathymetry has finished successfully. \nReturning final, regridding bathymetry product. ")
         return final_bathymetry
         
         
