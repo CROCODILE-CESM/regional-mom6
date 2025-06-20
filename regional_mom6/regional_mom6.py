@@ -127,6 +127,7 @@ def longitude_slicer(data, longitude_extent, longitude_coords):
         ## It's assumed that data has equally-spaced longitude values.
 
         lons = data[lon].data
+        attrs = data[lon].attrs
         dlons = lons[1] - lons[0]
 
         assert np.allclose(
@@ -190,6 +191,7 @@ def longitude_slicer(data, longitude_extent, longitude_coords):
                 )
             }
         )
+        data[lon].attrs = attrs # reassign attributes 
 
     return data
 
