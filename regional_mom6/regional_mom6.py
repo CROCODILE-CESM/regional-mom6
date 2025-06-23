@@ -1700,9 +1700,11 @@ class experiment:
         regridding_method=None,
     ):
         """
-        Setup_bathymetry wraps around three subroutines: config_bathymetry --> regrid_bathymetry --> tidy_bathymetry. 
-        You can specify which pieces of this process to execute within setup_bathymetry, but importantly each step 
-        is dependent on the last (e.g. cannot call regrid_bathymetry without first calling config_bathymetry). 
+        Setup_bathymetry wraps around three subroutines: config_bathymetry --> regrid_bathymetry --> tidy_bathymetry. These methods set up the proper files for regridding, regrid the bathymetry using xESMF, and then cleans up the file for input into MOM6. 
+        
+        If this process fails or the kernel fails, it is likely on the regrid_bathymetry step. You can
+        1. Run the same script/notebook with more resources.
+        2. Regrid using mpi and ESMF_Regrid. Call config_bathymetry, follow the instructions, then call tidy_bathymetry.
 
         Users can optionally fill narrow channels (see ``fill_channels`` keyword argument
         below). Note, however, that narrow channels are less of an issue for models that
@@ -1736,6 +1738,7 @@ class experiment:
             write_to_file=write_to_file
         )
         
+        print("Regridding bathymetry files.")
         bathymetry = self.regrid_bathymetry(
             bathymetry_output=bathymetry_output,
             empty_bathy=empty_bathy,
@@ -1743,6 +1746,7 @@ class experiment:
             write_to_file=write_to_file
         )
         
+        print("Tidying bathymetry files.")
         final_bathymetry = self.tidy_bathymetry(
             fill_channels=fill_channels,
             positive_down=positive_down,
@@ -1878,6 +1882,9 @@ class experiment:
                 engine="netcdf4",
             )
             empty_bathy.close()
+            
+        if write_to_file:
+            print("Unfinished: Move regridding instructions with MPI here?")
             
         return (bathymetry_output, empty_bathy)
     
