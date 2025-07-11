@@ -1016,7 +1016,7 @@ class experiment:
 
         # Remove time dimension if present in the IC.
         # Assume that the first time dim is the intended on if more than one is present
-        ic_raw = xr.open_mfdataset(raw_ic_path)
+        ic_raw = xr.open_dataset(raw_ic_path)
         if varnames["time"] in ic_raw.dims:
             ic_raw = ic_raw.isel({varnames["time"]: 0})
         if varnames["time"] in ic_raw.coords:
@@ -1138,38 +1138,38 @@ class experiment:
         # The land mask comes from the bathymetry file, so we don't need NaNs
         # to tell MOM6 where the land is.
         ic_raw_tracers = (
-            ic_raw_tracers.interpolate_na("lon", method="linear")
-            .ffill("lon")
-            .bfill("lon")
+            ic_raw_tracers.interpolate_na("lat", method="linear")
             .ffill("lat")
             .bfill("lat")
+            .ffill("lon")
+            .bfill("lon")
             .ffill(varnames["zl"])
         )
 
         ic_raw_u = (
-            ic_raw_u.interpolate_na("lon", method="linear")
-            .ffill("lon")
-            .bfill("lon")
+            ic_raw_u.interpolate_na("lat", method="linear")
             .ffill("lat")
             .bfill("lat")
+            .ffill("lon")
+            .bfill("lon")
             .ffill(varnames["zl"])
         )
 
         ic_raw_v = (
-            ic_raw_v.interpolate_na("lon", method="linear")
-            .ffill("lon")
-            .bfill("lon")
+            ic_raw_v.interpolate_na("lat", method="linear")
             .ffill("lat")
             .bfill("lat")
+            .ffill("lon")
+            .bfill("lon")
             .ffill(varnames["zl"])
         )
 
         ic_raw_eta = (
-            ic_raw_eta.interpolate_na("lon", method="linear")
-            .ffill("lon")
-            .bfill("lon")
+            ic_raw_eta.interpolate_na("lat", method="linear")
             .ffill("lat")
             .bfill("lat")
+            .ffill("lon")
+            .bfill("lon")
         )
 
         self.hgrid["lon"] = self.hgrid["x"]
@@ -1183,13 +1183,25 @@ class experiment:
         ## Make our three horizontal regridders
 
         regridder_u = rgd.create_regridder(
-            ic_raw_u, self.hgrid, locstream_out=False, method=regridding_method
+            ic_raw_u,
+            self.hgrid,
+            locstream_out=False,
+            method=regridding_method,
+            periodic=True,
         )
         regridder_v = rgd.create_regridder(
-            ic_raw_v, self.hgrid, locstream_out=False, method=regridding_method
+            ic_raw_v,
+            self.hgrid,
+            locstream_out=False,
+            method=regridding_method,
+            periodic=True,
         )
         regridder_t = rgd.create_regridder(
-            ic_raw_tracers, tgrid, locstream_out=False, method=regridding_method
+            ic_raw_tracers,
+            tgrid,
+            locstream_out=False,
+            method=regridding_method,
+            periodic=True,
         )  # Doesn't need to be rotated, so we can regrid to just tracers
 
         # ugrid= rgd.get_hgrid_arakawa_c_points(self.hgrid, "u").rename({"ulon": "lon", "ulat": "lat"}).set_coords(["lat", "lon"])
@@ -1298,7 +1310,6 @@ class experiment:
         vel_out = vel_out.interp({"zl": self.vgrid.zl.values})
 
         print("Saving outputs... ", end="")
-
         vel_out.fillna(0).to_netcdf(
             self.mom_input_dir / "init_vel.nc",
             mode="w",
@@ -1316,6 +1327,7 @@ class experiment:
                 "salt": {"_FillValue": -1e20, "missing_value": -1e20},
             },
         )
+
         eta_out.to_netcdf(
             self.mom_input_dir / "init_eta.nc",
             mode="w",
@@ -1761,7 +1773,7 @@ class experiment:
 
         longitude_buffer = 0.5  # 0.5 degree longitude buffer (hardcoded) for regridding
 
-        if np.isclose(horizontal_extent, 360):
+        if False and np.isclose(horizontal_extent, 360):
             ## longitude extent that goes around the globe -- use longitude_slicer
             bathymetry = longitude_slicer(
                 bathymetry,
