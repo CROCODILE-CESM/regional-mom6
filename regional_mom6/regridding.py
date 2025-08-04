@@ -496,6 +496,12 @@ def get_boundary_mask(
 
     # Get the boundary depth
     depth = get_edge(bathy, side, x_name=x_dim_name, y_name=y_dim_name).depth
+    # Force loading and copying to avoid shared references or lazy arrays
+    depth = depth.load().copy()
+
+    # If ntiles in bathymetry, remove it.
+    if "ntiles" in depth.dims:
+        depth = depth.isel({"ntiles": 0})
 
     # Mask fill values
     land = 0.0
@@ -575,16 +581,16 @@ def mask_dataset(
             # Check if all nans in the data are in the ocean and fill if so
             if not np.isin(nans_in_data, nans_in_mask).all():
                 regridding_logger.warning(
-                    f"NaNs in {var} not in mask. Which means there are NaNs over ocean."
-                    + " These values are filled with zeroes b/c they could cause issues with boundary conditions."
+                    f"NaNs in {var} not in mask. Which means there are NaNs over ocean. There shoudn't be NaNs after the regridding & filling functions. Please report to the regional_mom6 github repository as an issue."
+                    + " These NaNs are filled with zeroes b/c they could cause issues with boundary conditions. Please check the final OBC files to make sure you're happy with this substitute!"
                 )
                 ds[var] = ds[var].fillna(0)
 
-            # Apply the mask where land is NaN
-            ds[var] = ds[var] * mask
+            # Apply the mask where land is NaN (using values because of conflicting indexes)
+            ds[var].values = ds[var] * mask
 
             # Replace the land NaNs with a large FillValue
-            ds[var] = ds[var].fillna(fill_value)
+            ds[var].values = ds[var].fillna(fill_value)
     else:
         regridding_logger.warning(
             "All NaNs filled b/c bathymetry wasn't provided to the function. "
