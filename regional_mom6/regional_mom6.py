@@ -1733,7 +1733,7 @@ class experiment:
             "depth": vertical_coordinate_name,
         }
 
-        bathymetry = xr.open_zarr(bathymetry_path, chunks="auto",storage_options={"anon": False})[
+        bathymetry = xr.open_zarr(bathymetry_path, chunks="auto",storage_options={"anon": True})[
             coordinate_names["depth"]
         ]
 
