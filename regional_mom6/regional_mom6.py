@@ -1617,7 +1617,7 @@ class experiment:
         if tidal_constituents is not None:
             self.tidal_constituents = tidal_constituents
         tpxo_h = (
-            xr.open_zarr(Path(tpxo_elevation_filepath),storage_options={"anon": False})
+            xr.open_zarr(Path(tpxo_elevation_filepath), storage_options={"anon": False})
             .rename({"lon_z": "lon", "lat_z": "lat", "nc": "constituent"})
             .isel(
                 constituent=convert_to_tpxo_tidal_constituents(self.tidal_constituents)
@@ -1628,7 +1628,7 @@ class experiment:
         tpxo_h["hRe"] = np.real(h)
         tpxo_h["hIm"] = np.imag(h)
         tpxo_u = (
-            xr.open_zarr(Path(tpxo_velocity_filepath),storage_options={"anon": False})
+            xr.open_zarr(Path(tpxo_velocity_filepath), storage_options={"anon": False})
             .rename({"lon_u": "lon", "lat_u": "lat", "nc": "constituent"})
             .isel(
                 constituent=convert_to_tpxo_tidal_constituents(self.tidal_constituents)
@@ -1733,9 +1733,9 @@ class experiment:
             "depth": vertical_coordinate_name,
         }
 
-        bathymetry = xr.open_zarr(bathymetry_path, chunks="auto",storage_options={"anon": True})[
-            coordinate_names["depth"]
-        ]
+        bathymetry = xr.open_zarr(
+            bathymetry_path, chunks="auto", storage_options={"anon": True}
+        )[coordinate_names["depth"]]
 
         bathymetry = bathymetry.sel(
             {
