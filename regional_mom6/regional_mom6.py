@@ -26,6 +26,8 @@ from regional_mom6.utils import (
     rotate,
     find_files_by_pattern,
 )
+import cf_xarray.units # Must be imported before pint_xarray
+import pint_xarray
 
 
 warnings.filterwarnings("ignore")
