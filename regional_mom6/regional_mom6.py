@@ -970,7 +970,7 @@ class experiment:
 
         if len(self.vgrid.zi) > 2 and self.minimum_depth < self.vgrid.zi[2]:
             print(
-                f"Warning: Minimum depth of {self.minimum_depth}m is less than the depth of the third interface ({zi[2]}m)!\n"
+                f"Warning: Minimum depth of {self.minimum_depth}m is less than the depth of the third interface ({self.vgrid.zi[2]}m)!\n"
                 + "This means that some areas may only have one or two layers between the surface and sea floor. \n"
                 + "For increased stability, consider increasing the minimum depth, or adjusting the vertical coordinate to add more layers near the surface."
             )
