@@ -238,9 +238,11 @@ def get_glorys_data(
 
     file = open(Path(path / "get_glorys_data.sh"), "w")
 
-    lines.append(f"""
+    lines.append(
+        f"""
 copernicusmarine subset --dataset-id cmems_mod_glo_phy_my_0.083deg_P1D-m --variable so --variable thetao --variable uo --variable vo --variable zos --start-datetime {str(timerange[0]).replace(" ","T")} --end-datetime {str(timerange[1]).replace(" ","T")} --minimum-longitude {longitude_extent[0] - buffer} --maximum-longitude {longitude_extent[1] + buffer} --minimum-latitude {latitude_extent[0] - buffer} --maximum-latitude {latitude_extent[1] + buffer} --minimum-depth 0 --maximum-depth 6000 -o {str(path)} -f {segment_name}.nc\n
-""")
+"""
+    )
     file.writelines(lines)
     file.close()
     return Path(path / "get_glorys_data.sh")
@@ -2865,6 +2867,9 @@ class segment:
             segment_out[f"{coords.attrs['parallel']}_{self.segment_name}"].size
         )
 
+        segment_out[f"ny_{self.segment_name}"].attrs["axis"] = "Y"
+        segment_out[f"nx_{self.segment_name}"].attrs["axis"] = "X"
+
         encoding_dict = {
             "time": {"dtype": "double"},
             f"nx_{self.segment_name}": {
@@ -2887,13 +2892,7 @@ class segment:
         # If repeat-year forcing, add modulo coordinate
         if self.repeat_year_forcing:
             segment_out["time"] = segment_out["time"].assign_attrs({"modulo": " "})
-        # Add axes to suppress annoying runtime warnings
-        segment_out[f"ny_{self.segment_name}"] = segment_out[
-            f"ny_{self.segment_name}"
-        ].assign_attrs({"axis": "Y"})
-        segment_out[f"nx_{self.segment_name}"] = segment_out[
-            f"nx_{self.segment_name}"
-        ].assign_attrs({"axis": "X"})
+
         segment_out.load().to_netcdf(
             self.outfolder / f"forcing_obc_{self.segment_name}.nc",
             encoding=encoding_dict,
