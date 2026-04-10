@@ -1454,6 +1454,7 @@ class experiment:
         rotational_method=rot.RotationMethod.EXPAND_GRID,
         regridding_method=None,
         fill_method=None,
+        time_units="days"
     ):
         """
         A wrapper for :func:`~setup_single_boundary`. Given a list of up to four cardinal directions,
@@ -1523,6 +1524,7 @@ class experiment:
                 rotational_method=rotational_method,
                 regridding_method=regridding_method,
                 fill_method=fill_method,
+                time_units=time_units,
             )
 
         # Scrape the bgc var names into their own files for the boundary conditions (required for generic tracers at the moment, Apr 2026)
@@ -1573,6 +1575,7 @@ class experiment:
         rotational_method=rot.RotationMethod.EXPAND_GRID,
         regridding_method=None,
         fill_method=None,
+        time_units="days", 
     ):
         """
         Set up a boundary forcing file for a given ``orientation``.
@@ -1627,6 +1630,7 @@ class experiment:
             rotational_method=rotational_method,
             regridding_method=regridding_method,
             fill_method=fill_method,
+            time_units=time_units,  
         )
 
         print("Done.")
@@ -2859,7 +2863,7 @@ class segment:
 
             segment_out.time.attrs = {
                 "calendar": calendar,
-                "units": f"{time_units} since {self.startdate}",
+                "units": f" days since {self.startdate}",
             }
         else:
             segment_out.time.attrs = {
