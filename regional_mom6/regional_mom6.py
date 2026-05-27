@@ -28,12 +28,12 @@ from regional_mom6.utils import (
 from mom6_forge.vgrid import *
 from mom6_forge.grid import *
 from mom6_forge.topo import *
+from mom6_forge._source_bathy import longitude_slicer
 from regional_mom6.validate import validate_obc_file, validate_general_file
 
 warnings.filterwarnings("ignore")
 
 __all__ = [
-    "longitude_slicer",
     "experiment",
     "segment",
     "get_glorys_data",
