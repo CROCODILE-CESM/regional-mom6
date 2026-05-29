@@ -26,7 +26,7 @@ from regional_mom6.utils import (
     try_pint_convert,
     is_rectilinear_hgrid,
 )
-from mom6_forge.utils import longitude_slicer
+from mom6_forge._source_bathy import longitude_slicer
 from mom6_forge._supergrid import SupergridBase
 from mom6_forge.vgrid import *
 from mom6_forge.grid import *
