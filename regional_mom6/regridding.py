@@ -262,6 +262,7 @@ def create_regridder(
         filename=outfile,
         reuse_weights=reuse_weights,
         unmapped_to_nan=True,
+        ignore_degenerate=True,
     )
 
     return regridder
