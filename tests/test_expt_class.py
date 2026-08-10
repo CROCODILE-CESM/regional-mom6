@@ -595,13 +595,11 @@ def test_recalculate_rotation_angle_is_noop_for_consistent_grid(tmp_path, grid, 
     np.testing.assert_allclose(before, after)
 
 
-def test_get_segment_reuses_cached_segment(tmp_path, monkeypatch):
-    """_get_segment should build a Segment once per orientation and reuse the
-    same object on subsequent calls -- this is what lets setup_ocean_state_boundaries
-    and setup_boundary_tides share one Segment per orientation instead of each
-    re-deriving it from the grid."""
+def test_get_segment_builds_named_by_list_position(tmp_path):
+    """_get_segment should build a Segment named by the boundary's position in
+    expt.segments (the list itself), not by its cardinal orientation."""
     expt = experiment.create_empty(
-        expt_name="cache_test",
+        expt_name="get_segment_test",
         mom_input_dir=tmp_path,
         mom_run_dir=tmp_path,
     )
@@ -610,27 +608,13 @@ def test_get_segment_reuses_cached_segment(tmp_path, monkeypatch):
     expt.hgrid_type = "even_spacing"
     expt.resolution = 0.1
     expt._make_hgrid()
+    # create_empty's default expt.segments: ["south", "north", "west", "east"]
 
-    call_count = {"n": 0}
-    real_cardinal = Segment.cardinal.__func__
+    east_segment = expt._get_segment("east")
+    north_segment = expt._get_segment("north")
 
-    def counting_cardinal(cls, *args, **kwargs):
-        call_count["n"] += 1
-        return real_cardinal(cls, *args, **kwargs)
-
-    monkeypatch.setattr(Segment, "cardinal", classmethod(counting_cardinal))
-
-    segment_first = expt._get_segment("east")
-    segment_second = expt._get_segment("east")
-
-    assert call_count["n"] == 1, "Segment.cardinal should only be called once"
-    assert segment_first is segment_second
-    assert expt.segments["east"] is segment_first
-
-    # A different orientation still builds its own Segment
-    segment_north = expt._get_segment("north")
-    assert call_count["n"] == 2
-    assert segment_north is not segment_first
+    assert east_segment.segment_name == "segment_004"
+    assert north_segment.segment_name == "segment_002"
 
 
 def test_setup_generic_writes_correct_obc_position_strings(tmp_path):
@@ -654,7 +638,7 @@ def test_setup_generic_writes_correct_obc_position_strings(tmp_path):
     expt.depth = 1000
     expt.minimum_depth = 4
     expt.tidal_constituents = []
-    expt.boundaries = ["south", "north", "east", "west"]
+    expt.segments = ["south", "north", "east", "west"]
     expt._make_hgrid()
     expt._make_vgrid()
 
@@ -679,9 +663,63 @@ def test_setup_generic_writes_correct_obc_position_strings(tmp_path):
         "east": '"I=N,J=0:N',
         "west": '"I=0,J=N:0',
     }
-    for seg in expt.boundaries:
-        ind_seg = expt.find_MOM6_rectangular_orientation(seg)
-        value = MOM_override_dict[f"OBC_SEGMENT_00{ind_seg}"]["value"]
+    for ind_seg, seg in enumerate(expt.segments, start=1):
+        value = MOM_override_dict[f"OBC_SEGMENT_{ind_seg:03d}"]["value"]
         assert value.startswith(
             expected_prefix[seg]
         ), f"{seg} position string {value!r} does not match legacy convention"
+
+
+def test_setup_generic_interior_segment_numbered_by_list_position(tmp_path):
+    """boundaries mixing cardinal strings and an interior Segment should be
+    numbered purely by list position (not by orientation), and the interior
+    segment's OBC_SEGMENT position string should come straight from its own
+    mom6_obc_position_string()."""
+    expt = experiment.create_empty(
+        expt_name="interior_numbering_test",
+        mom_input_dir=tmp_path / "inputdir",
+        mom_run_dir=tmp_path / "rundir",
+    )
+    expt.mom_input_dir.mkdir()
+    expt.mom_run_dir.mkdir()
+    expt.longitude_extent = (-5, 5)
+    expt.latitude_extent = (0, 10)
+    expt.date_range = ["2000-01-01 00:00:00", "2000-01-02 00:00:00"]
+    expt.hgrid_type = "even_spacing"
+    expt.resolution = 0.5
+    expt.number_vertical_layers = 5
+    expt.layer_thickness_ratio = 1
+    expt.depth = 1000
+    expt.minimum_depth = 4
+    expt.tidal_constituents = []
+    expt._make_hgrid()
+    expt._make_vgrid()
+
+    # An interior line (index=20 is neither 0 nor -1 on a 41-point nyp axis) --
+    # not adjacent to any bathymetry, so orientation validation is a no-op here.
+    interior_segment = Segment.from_hgrid(
+        expt.hgrid, axis="nyp", index=20, segment_name="my_interior_line"
+    )
+    expt.segments = ["south", "east", interior_segment]
+
+    module_path = Path(importlib.resources.files("regional_mom6"))
+    demos_dir = (
+        module_path / "demos"
+        if (module_path / "demos").exists()
+        else module_path.parent / "demos"
+    )
+    shutil.copytree(
+        demos_dir / "premade_run_directories" / "common_files",
+        expt.mom_run_dir,
+        dirs_exist_ok=True,
+    )
+
+    expt.setup_generic(mask_land_cpus=False)
+
+    MOM_override_dict = mpt.read_MOM_file_as_dict("MOM_override", expt.mom_run_dir)
+    assert int(MOM_override_dict["OBC_NUMBER_OF_SEGMENTS"]["value"]) == 3
+
+    # 3rd in the list -> OBC_SEGMENT_003, regardless of it being an interior line.
+    expected = '"' + interior_segment.mom6_obc_position_string()
+    value = MOM_override_dict["OBC_SEGMENT_003"]["value"]
+    assert value.startswith(expected)

@@ -247,7 +247,14 @@ class experiment:
         tidal_constituents (List[str]): List of tidal constituents to be used in the experiment. Default is ``["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MM", "MF"]``.
         create_empty (bool): If ``True``, the experiment object is initialized empty. This is used for testing and experienced user manipulation.
         expt_name (str): The name of the experiment (for config file use)
-        boundaries (List[str]): List of (rectangular) boundaries to be set. Default is ``["south", "north", "west", "east"]``. The boundaries are set as (list index + 1) in MOM_override in the order of the list, and less than 4 boundaries can be set.
+        boundaries (List[Union[str, Segment]]): List of boundaries to be set, each entry either a
+            cardinal direction string (``"south"``, ``"north"``, ``"west"``, ``"east"``) or an
+            interior/partial-edge :class:`~regional_mom6.segment.Segment` (e.g. built via
+            :meth:`Segment.from_hgrid`/:meth:`Segment.from_lonlat`). Default is
+            ``["south", "north", "west", "east"]``. Stored as ``self.segments``; numbered
+            ``1..len(self.segments)`` purely by position in this list (used for
+            ``OBC_SEGMENT_00N`` in MOM_override and for output filenames) -- any number of
+            boundaries can be set, not just 4.
         regridding_method (str): regridding method to use throughout the entire experiment. Default is ``'bilinear'``. Any other xesmf regridding method can be used.
         fill_method (Function): The fill function to be used after regridding datasets. it takes a xarray DataArray and returns a filled DataArray. Default is ``rgd.fill_missing_data``.
     """
@@ -322,8 +329,7 @@ class experiment:
         expt.longitude_extent = longitude_extent
         expt.ocean_mask = None
         expt.layout = None
-        expt.segments = {}
-        expt.boundaries = boundaries
+        expt.segments = boundaries
         expt.regridding_method = regridding_method
         expt.fill_method = fill_method
         expt.m6f_hgrid = None
@@ -453,8 +459,7 @@ class experiment:
             )
             self._make_vgrid()  # sets `self.m6f_vgrid`; `self.vgrid` derives from it
 
-        self.segments = {}
-        self.boundaries = boundaries
+        self.segments = boundaries
 
         # create additional directories and links
         (self.mom_input_dir / "weights").mkdir(exist_ok=True)
@@ -728,40 +733,30 @@ class experiment:
         error_message = f"{name} not found. Available methods and attributes are: {available_methods}"
         raise AttributeError(error_message)
 
-    def find_MOM6_rectangular_orientation(self, input):
+    def _segment_number(self, boundary):
         """
-        Convert between MOM6 boundary and the specific segment number needed, or the inverse.
+        The 1-based position of ``boundary`` in ``self.segments`` -- the number
+        used everywhere a segment needs one (``segment_00N``, ``OBC_SEGMENT_00N``,
+        etc). Purely positional: a cardinal direction is just one kind of boundary
+        entry, an interior/arbitrary ``Segment`` is another, and neither has an
+        inherent "number" outside of where it sits in the list.
         """
+        return self.segments.index(boundary) + 1
 
-        direction_dir = {}
-        counter = 1
-        for b in self.boundaries:
-            direction_dir[b] = counter
-            counter += 1
-        direction_dir_inv = {v: k for k, v in direction_dir.items()}
-        merged_dict = {**direction_dir, **direction_dir_inv}
-        try:
-            val = merged_dict[input]
-        except KeyError:
-            raise ValueError(
-                "Invalid direction or segment number for MOM6 rectangular orientation"
-            )
-        return val
-
-    def _get_segment(self, orientation, bathymetry_path=None):
+    def _get_segment(self, boundary, bathymetry_path=None):
         """
-        Build (or reuse a cached) :class:`~regional_mom6.segment.Segment` for the
-        given cardinal ``orientation``.
+        Build a :class:`~regional_mom6.segment.Segment` for the given ``boundary``
+        entry -- a cardinal direction string, or an already-built
+        :class:`~regional_mom6.segment.Segment` (e.g. an interior or partial-edge
+        line from :meth:`Segment.from_hgrid`/:meth:`Segment.from_lonlat`).
 
-        The first call for a given ``orientation`` builds the ``Segment`` (masking
-        with the bathymetry at ``bathymetry_path`` if given) and caches it in
-        ``self.segments``; subsequent calls for the same ``orientation`` reuse the
-        cached ``Segment`` regardless of ``bathymetry_path`` -- this lets
-        :func:`~setup_ocean_state_boundaries` and :func:`~setup_boundary_tides` share
-        one ``Segment`` per orientation instead of each re-deriving it from the grid.
+        A ``Segment`` boundary is always re-cut to the canonical
+        ``segment_{i:03d}`` name for its position ``i`` (via
+        :meth:`Segment.from_spec`/:meth:`Segment.to_spec`), regardless of whatever
+        name it was originally given -- that canonical name is what MOM6's output
+        files and ``OBC_SEGMENT_00i`` config expect.
         """
-        if orientation in self.segments:
-            return self.segments[orientation]
+        number = self._segment_number(boundary)
 
         topo = None
         if bathymetry_path is not None:
@@ -776,12 +771,12 @@ class experiment:
             except Exception:
                 topo = None
 
-        segment_name = "segment_{:03d}".format(
-            self.find_MOM6_rectangular_orientation(orientation)
-        )
-        segment = Segment.cardinal(self.hgrid, orientation, segment_name, topo=topo)
-        self.segments[orientation] = segment
-        return segment
+        segment_name = "segment_{:03d}".format(number)
+        if isinstance(boundary, Segment):
+            return Segment.from_spec(
+                self.hgrid, boundary.to_spec(), segment_name, topo=topo
+            )
+        return Segment.cardinal(self.hgrid, boundary, segment_name, topo=topo)
 
     def _make_hgrid(self):
         """
@@ -1256,7 +1251,7 @@ class experiment:
             download_path=raw_boundaries_path,
             modify_existing=False,  # This is the first line, so start bash script anew
         )
-        if "east" in self.boundaries:
+        if "east" in self.segments:
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nxp=-1).min()),
@@ -1270,7 +1265,7 @@ class experiment:
                 segment_name="east_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "west" in self.boundaries:
+        if "west" in self.segments:
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nxp=0).min()),
@@ -1284,7 +1279,7 @@ class experiment:
                 segment_name="west_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "south" in self.boundaries:
+        if "south" in self.segments:
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nyp=0).min()),
@@ -1298,7 +1293,7 @@ class experiment:
                 segment_name="south_unprocessed",
                 download_path=raw_boundaries_path,
             )
-        if "north" in self.boundaries:
+        if "north" in self.segments:
             get_glorys_data(
                 longitude_extent=[
                     float(self.hgrid.x.isel(nyp=-1).min()),
@@ -1337,9 +1332,11 @@ class experiment:
         fill_method=None,
     ):
         """
-        A wrapper for :func:`~setup_single_boundary`. Given a list of up to four cardinal directions,
-        it creates a boundary forcing file for each one. Ensure that the raw boundaries are all saved
-        in the same directory, and that they are named using the format ``east_unprocessed.nc``.
+        A wrapper for :func:`~setup_single_boundary`. Given ``self.segments`` (cardinal
+        direction strings and/or interior/partial-edge ``Segment`` instances), creates a boundary
+        forcing file for each one. Ensure that the raw boundaries are all saved in the same
+        directory: named ``east_unprocessed.nc`` for a cardinal boundary, or
+        ``{segment.segment_name}_unprocessed.nc`` for a ``Segment`` boundary.
 
         Arguments:
             raw_boundaries_path (str): Path to the directory containing the raw boundary forcing files.
@@ -1347,8 +1344,6 @@ class experiment:
                 input dataset.
             bgc_tracer_names (Dict[str, str]): Specify the BGC tracer names to the name in the
                 input dataset, can also be specified in the varnames dict but this is here so we can reformat the output into seperate files. For example, ``{'oxygen': 'o2', 'phosphate': 'po4', ...}``.
-            boundaries (List[str]): List of cardinal directions for which to create boundary forcing files.
-                Default is ``["south", "north", "west", "east"]``.
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the boundary forcing.
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             bathymetry_path (Optional[str]): Path to the bathymetry file. Default is ``None``, in which case the
@@ -1360,23 +1355,6 @@ class experiment:
             regridding_method = self.regridding_method
         if fill_method is None:
             fill_method = self.fill_method
-        for i in self.boundaries:
-            if i not in ["south", "north", "west", "east"]:
-                raise ValueError(
-                    f"Invalid boundary direction: {i}. Must be one of ['south', 'north', 'west', 'east']"
-                )
-
-        if len(self.boundaries) < 4:
-            print(
-                "NOTE: the 'setup_run_directories' method does understand the less than four boundaries but be careful. Please check the MOM_input/override file carefully to reflect the number of boundaries you have, and their orientations. You should be able to find the relevant section in the MOM_input/override file by searching for 'segment_'. Ensure that the segment names match those in your inputdir/forcing folder"
-            )
-
-        if len(self.boundaries) > 4:
-            raise ValueError(
-                "This method only supports up to four boundaries. To set up more complex boundary shapes, construct a "
-                "regional_mom6.segment.Segment directly (e.g. via Segment.from_hgrid) and call its "
-                "regrid_velocity_tracers method for each boundary."
-            )
 
         if bgc_tracer_names is None:
             bgc_tracer_names = {}
@@ -1390,15 +1368,17 @@ class experiment:
             key = "tracers" if "tracers" in physical_varnames else "tracer_var_names"
             all_varnames[key] = {**physical_varnames[key], **bgc_tracer_names}
 
-        # Now iterate through our four boundaries
-        for orientation in self.boundaries:
+        for boundary in self.segments:
+            # Raw file is named after the boundary's own identity (cardinal direction, or the
+            # segment_name the caller gave their Segment) -- independent of its position/number
+            # in self.segments.
+            raw_file_stem = (
+                boundary.segment_name if isinstance(boundary, Segment) else boundary
+            )
             self.setup_single_boundary(
-                Path(raw_boundaries_path / (orientation + "_unprocessed.nc")),
+                Path(raw_boundaries_path / (raw_file_stem + "_unprocessed.nc")),
                 all_varnames,
-                orientation,  # The cardinal direction of the boundary
-                self.find_MOM6_rectangular_orientation(
-                    orientation
-                ),  # A number to identify the boundary; indexes from 1
+                boundary,
                 arakawa_grid=arakawa_grid,
                 bathymetry_path=bathymetry_path,
                 regridding_method=regridding_method,
@@ -1422,8 +1402,8 @@ class experiment:
 
         # Read in the forcing datasets
         datasets = {}
-        for boundary in self.boundaries:
-            num = str(self.find_MOM6_rectangular_orientation(boundary)).zfill(3)
+        for i, boundary in enumerate(self.segments, start=1):
+            num = f"{i:03d}"
             datasets[num] = xr.open_dataset(
                 self.mom_input_dir / f"forcing_obc_segment_{num}.nc"
             )
@@ -1446,15 +1426,14 @@ class experiment:
         self,
         path_to_bc,
         varnames,
-        orientation,
-        segment_number,
+        boundary,
         arakawa_grid="A",
         bathymetry_path=None,
         regridding_method=None,
         fill_method=None,
     ):
         """
-        Set up a boundary forcing file for a given ``orientation``.
+        Set up a boundary forcing file for a given ``boundary``.
 
         Arguments:
             path_to_bc (str): Path to boundary forcing file. Ideally this should be a pre cut-out
@@ -1463,10 +1442,9 @@ class experiment:
                 will be slower.
             varnames (Dict[str, str]): Mapping from MOM6 variable/coordinate names to the name in the
                 input dataset.
-            orientation (str): Orientation of boundary forcing file, i.e., ``'east'``, ``'west'``,
-                ``'north'``, or ``'south'``.
-            segment_number (int): Number the segments according to how they'll be specified in
-                the ``MOM_input``.
+            boundary (Union[str, Segment]): The boundary to process -- a cardinal direction string
+                (``'east'``, ``'west'``, ``'north'``, or ``'south'``), or an interior/partial-edge
+                :class:`~regional_mom6.segment.Segment`.
             arakawa_grid (Optional[str]): Arakawa grid staggering type of the boundary forcing.
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             bathymetry_path (str): Path to the bathymetry file. Default is ``None``, in which case
@@ -1480,14 +1458,12 @@ class experiment:
         if fill_method is None:
             fill_method = self.fill_method
 
-        print(
-            "Processing {} boundary velocity & tracers...".format(orientation), end=""
-        )
+        print("Processing {} boundary velocity & tracers...".format(boundary), end="")
         if not Path(path_to_bc).exists():
             raise FileNotFoundError(
                 f"Boundary file not found at {path_to_bc}. Please ensure that the files are named in the format `east_unprocessed.nc`."
             )
-        segment = self._get_segment(orientation, bathymetry_path=bathymetry_path)
+        segment = self._get_segment(boundary, bathymetry_path=bathymetry_path)
 
         segment.regrid_velocity_tracers(
             infile=path_to_bc,  # location of raw boundary
@@ -1564,8 +1540,9 @@ class experiment:
             dims=["time"],
         )
         # Initialize or find boundary segment
-        for b in self.boundaries:
-            print("Processing {} boundary...".format(b), end="")
+        for b in self.segments:
+            label = b.segment_name if isinstance(b, Segment) else b
+            print("Processing {} boundary...".format(label), end="")
 
             # If ocean-state setup already built this segment, reuse it instead of
             # re-deriving it from the grid again.
@@ -1822,7 +1799,7 @@ class experiment:
 
         # Define number of OBC segments
         MOM_override_dict["OBC_NUMBER_OF_SEGMENTS"]["value"] = len(
-            self.boundaries
+            self.segments
         )  # This means that each SEGMENT_00{num} has to be configured to point to the right file, which based on our other functions needs to be specified.
 
         # More OBC Consts
@@ -1836,9 +1813,9 @@ class experiment:
         MOM_override_dict["BRUSHCUTTER_MODE"]["value"] = "True"
 
         # Define Specific Segments
-        for seg in self.boundaries:
-            ind_seg = self.find_MOM6_rectangular_orientation(seg)
-            key_start = f"OBC_SEGMENT_00{ind_seg}"
+        for ind_seg, seg in enumerate(self.segments, start=1):
+            file_num_obc = f"{ind_seg:03d}"  # "001", "002", ... (up to 3 digits)
+            key_start = f"OBC_SEGMENT_{file_num_obc}"
             ## Position and Config
             key_POSITION = key_start
 
@@ -1854,26 +1831,23 @@ class experiment:
 
             # Data Key
             key_DATA = key_start + "_DATA"
-            file_num_obc = str(
-                self.find_MOM6_rectangular_orientation(seg)
-            )  # 1,2,3,4 for rectangular boundaries, BUT if we have less than 4 segments we use the index to specific the number, but keep filenames as if we had four boundaries
 
             obc_string = (
-                f'"U=file:forcing_obc_segment_00{file_num_obc}.nc(u),'
-                f"V=file:forcing_obc_segment_00{file_num_obc}.nc(v),"
-                f"SSH=file:forcing_obc_segment_00{file_num_obc}.nc(eta),"
-                f"TEMP=file:forcing_obc_segment_00{file_num_obc}.nc(temp),"
-                f"SALT=file:forcing_obc_segment_00{file_num_obc}.nc(salt)"
+                f'"U=file:forcing_obc_segment_{file_num_obc}.nc(u),'
+                f"V=file:forcing_obc_segment_{file_num_obc}.nc(v),"
+                f"SSH=file:forcing_obc_segment_{file_num_obc}.nc(eta),"
+                f"TEMP=file:forcing_obc_segment_{file_num_obc}.nc(temp),"
+                f"SALT=file:forcing_obc_segment_{file_num_obc}.nc(salt)"
             )
             MOM_override_dict[key_DATA]["value"] = obc_string
             if with_tides:
                 tides_addition = (
-                    f",Uamp=file:tu_segment_00{file_num_obc}.nc(uamp),"
-                    f"Uphase=file:tu_segment_00{file_num_obc}.nc(uphase),"
-                    f"Vamp=file:tu_segment_00{file_num_obc}.nc(vamp),"
-                    f"Vphase=file:tu_segment_00{file_num_obc}.nc(vphase),"
-                    f"SSHamp=file:tz_segment_00{file_num_obc}.nc(zamp),"
-                    f'SSHphase=file:tz_segment_00{file_num_obc}.nc(zphase)"'
+                    f",Uamp=file:tu_segment_{file_num_obc}.nc(uamp),"
+                    f"Uphase=file:tu_segment_{file_num_obc}.nc(uphase),"
+                    f"Vamp=file:tu_segment_{file_num_obc}.nc(vamp),"
+                    f"Vphase=file:tu_segment_{file_num_obc}.nc(vphase),"
+                    f"SSHamp=file:tz_segment_{file_num_obc}.nc(zamp),"
+                    f'SSHphase=file:tz_segment_{file_num_obc}.nc(zphase)"'
                 )
                 MOM_override_dict[key_DATA]["value"] = (
                     MOM_override_dict[key_DATA]["value"] + tides_addition
