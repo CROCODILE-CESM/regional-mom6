@@ -132,8 +132,8 @@ copernicusmarine subset --dataset-id cmems_mod_glo_phy_my_0.083deg_P1D-m --varia
 """)
 
     if last_pair:
-        lines.append("wait \n")    
-        lines.append('echo "All parallel calls to copernicusmarine have completed."')    
+        lines.append("wait \n")
+        lines.append('echo "All parallel calls to copernicusmarine have completed."')
     file.writelines(lines)
     file.close()
     return Path(path / "get_glorys_data.sh")
