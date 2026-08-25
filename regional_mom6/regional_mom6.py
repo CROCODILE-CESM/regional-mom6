@@ -95,6 +95,7 @@ def get_glorys_data(
     segment_name,
     download_path,
     modify_existing=True,
+    last_pair=False,
 ):
     """
     Generates a bash script to download all of the required ocean forcing data.
@@ -106,6 +107,7 @@ def get_glorys_data(
         segment_range (str): name of the segment (without the ``.nc`` extension, e.g., ``east_unprocessed``)
         download_path (str): Location of where the script is saved
         modify_existing (bool): Whether to add to an existing script or start a new one
+        last_pair (bool): Add wait and echo text at the end of the command list
     Returns:
         file path
     """
@@ -126,8 +128,12 @@ def get_glorys_data(
     file = open(Path(path / "get_glorys_data.sh"), "w")
 
     lines.append(f"""
-copernicusmarine subset --dataset-id cmems_mod_glo_phy_my_0.083deg_P1D-m --variable so --variable thetao --variable uo --variable vo --variable zos --start-datetime {str(timerange[0]).replace(" ","T")} --end-datetime {str(timerange[1]).replace(" ","T")} --minimum-longitude {longitude_extent[0] - buffer} --maximum-longitude {longitude_extent[1] + buffer} --minimum-latitude {latitude_extent[0] - buffer} --maximum-latitude {latitude_extent[1] + buffer} --minimum-depth 0 --maximum-depth 6000 -o {str(path)} -f {segment_name}.nc\n
+copernicusmarine subset --dataset-id cmems_mod_glo_phy_my_0.083deg_P1D-m --variable so --variable thetao --variable uo --variable vo --variable zos --start-datetime {str(timerange[0]).replace(" ","T")} --end-datetime {str(timerange[1]).replace(" ","T")} --minimum-longitude {longitude_extent[0] - buffer} --maximum-longitude {longitude_extent[1] + buffer} --minimum-latitude {latitude_extent[0] - buffer} --maximum-latitude {latitude_extent[1] + buffer} --minimum-depth 0 --maximum-depth 6000 -o {str(path)} -f {segment_name}.nc &\n
 """)
+
+    if last_pair:
+        lines.append("wait \n")    
+        lines.append('echo "All parallel calls to copernicusmarine have completed."')    
     file.writelines(lines)
     file.close()
     return Path(path / "get_glorys_data.sh")
