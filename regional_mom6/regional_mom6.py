@@ -14,17 +14,20 @@ import importlib.resources
 import pandas as pd
 from pathlib import Path
 import json
-from enum import Enum
+from ruamel.yaml import YAML
 from regional_mom6 import MOM_parameter_tools as mpt
 from regional_mom6 import regridding as rgd
 from regional_mom6.config import Config
+from regional_mom6.grid import Grid
+from regional_mom6.vgrid import VGrid
+from regional_mom6.topo import Topo
+from regional_mom6.chl import interpolate_and_fill_seawifs
 from regional_mom6.utils import (
     ap2ep,
     ep2ap,
     rotate,
     find_files_by_pattern,
     try_pint_convert,
-    is_rectilinear_hgrid,
 )
 from mom6_forge._supergrid import SupergridBase
 from mom6_forge.utils import longitude_slicer
@@ -39,73 +42,39 @@ __all__ = [
     "experiment",
     "segment",
     "get_glorys_data",
-    "RotationMethod",
-    "get_rotation_angle",
+    "Grid",
+    "Topo",
+    "VGrid",
 ]
 
 
-class RotationMethod(Enum):
-    """Prescribes the rotational method used in boundary conditions when the grid
-    does not have coordinates along lines of constant longitude-latitude.
+def _get_angle_dx(hgrid: xr.Dataset, orientation=None) -> xr.DataArray:
+    """Return the MOM6-consistent ``angle_dx`` rotation angle (degrees) for the hgrid,
+    or a boundary slice of it.
 
-    Attributes:
-        EXPAND_GRID (int): Finds angles at q/u/v points by expanding the hgrid by one
-            row/column, replicating exactly what MOM6 does.
-        GIVEN_ANGLE (int): Expects a pre-given angle called ``angle_dx``.
-        NO_ROTATION (int): Grid is along lines of constant latitude-longitude; no rotation required.
-    """
-
-    EXPAND_GRID = 1
-    GIVEN_ANGLE = 2
-    NO_ROTATION = 3
-
-
-def get_rotation_angle(
-    rotational_method: RotationMethod, hgrid: xr.Dataset, orientation=None
-) -> xr.DataArray:
-    """Return the rotation angle (degrees) for the hgrid or a boundary slice of it.
+    ``angle_dx`` is computed by mom6_forge (via the expanded-supergrid method) at grid
+    construction time and is always present on ``experiment.hgrid``; see
+    :meth:`~experiment.recalculate_rotation_angle` if it ever needs to be refreshed.
 
     Parameters
     ----------
-    rotational_method : RotationMethod
     hgrid : xr.Dataset
     orientation : str, optional
         If given (e.g. ``"north"``), return only the boundary slice.
     """
-    boundary = orientation is not None
+    if orientation is not None:
+        return rgd.coords(
+            hgrid, orientation, "doesnt_matter", angle_variable_name="angle_dx"
+        )["angle"]
+    return hgrid["angle_dx"]
 
-    if rotational_method == RotationMethod.NO_ROTATION:
-        if not is_rectilinear_hgrid(hgrid):
-            raise ValueError("NO_ROTATION method only works with rectilinear grids")
-        angles = xr.zeros_like(hgrid.x)
-        if boundary:
-            hgrid["zero_angle"] = angles
-            return rgd.coords(
-                hgrid, orientation, "doesnt_matter", angle_variable_name="zero_angle"
-            )["angle"]
-        return angles
 
-    elif rotational_method == RotationMethod.GIVEN_ANGLE:
-        if boundary:
-            return rgd.coords(
-                hgrid, orientation, "doesnt_matter", angle_variable_name="angle_dx"
-            )["angle"]
-        return hgrid["angle_dx"]
-
-    elif rotational_method == RotationMethod.EXPAND_GRID:
-        hgrid["angle_dx_rm6"] = xr.DataArray(
-            SupergridBase.calculate_supergrid_rotation_angles_using_expanded_supergrid_method(
-                hgrid.x.values, hgrid.y.values
-            ),
-            dims=hgrid.x.dims,
-        )
-        if boundary:
-            return rgd.coords(
-                hgrid, orientation, "doesnt_matter", angle_variable_name="angle_dx_rm6"
-            )["angle"]
-        return hgrid["angle_dx_rm6"]
-
-    raise ValueError("Invalid rotational method")
+# Maximum tolerated disagreement (in degrees) between an hgrid.nc file's stored
+# `angle_dx` and the angle MOM6's expanded-supergrid method computes from the same
+# grid's x/y coordinates, before `experiment.hgrid` refuses to use it. A large
+# disagreement usually means the file's `angle_dx` came from a different tool or
+# rotation convention than mom6_forge/MOM6 expect.
+ANGLE_DX_DISCREPANCY_THRESHOLD_DEGREES = 5.0
 
 
 # If the array is pint possible, ensure we have the right units for main fields (eta, u, v, temp),
@@ -219,24 +188,36 @@ class experiment:
     Arguments:
         date_range (Tuple[str]): Start and end dates of the boundary forcing window. For
             example: ``("2003-01-01", "2003-01-31")``.
-        resolution (float): Lateral resolution of the domain (in degrees).
-        number_vertical_layers (int): Number of vertical layers.
-        layer_thickness_ratio (float): Ratio of largest to smallest layer thickness;
-            used as input in :func:`~hyperbolictan_thickness_profile`.
-        depth (float): Depth of the domain.
         mom_run_dir (str): Path of the MOM6 control directory.
         mom_input_dir (str): Path of the MOM6 input directory, to receive the forcing files.
+        resolution (float, optional): Lateral resolution of the domain (in degrees). Required
+            only when ``hgrid_type`` doesn't already provide a ``Grid`` object (i.e., you need
+            one to be generated from ``longitude_extent``/``latitude_extent``).
+        number_vertical_layers (int, optional): Number of vertical layers. Required only when
+            ``vgrid_type`` doesn't already provide a ``VGrid`` object.
+        layer_thickness_ratio (float, optional): Ratio of largest to smallest layer thickness;
+            used as input in :func:`~hyperbolictan_thickness_profile`. Required only when
+            ``vgrid_type`` doesn't already provide a ``VGrid`` object.
+        depth (float, optional): Depth of the domain. Required only when ``vgrid_type`` doesn't
+            already provide a ``VGrid`` object.
         fre_tools_dir (str): Path of GFDL's FRE tools (https://github.com/NOAA-GFDL/FRE-NCtools)
             binaries.
-        longitude_extent (Tuple[float]): Extent of the region in longitude (in degrees). For
-            example: ``(40.5, 50.0)``.
-        latitude_extent (Tuple[float]): Extent of the region in latitude (in degrees). For
-            example: ``(-20.0, 30.0)``.
-        hgrid_type (str): Type of horizontal grid to generate. Currently, only ``'even_spacing'`` is supported. Setting this argument to ``'from_file'`` requires the additional hgrid_path argument
-        hgrid_path (str): Path to the horizontal grid file if the hgrid_type is ``'from_file'``.
-        vgrid_type (str): Type of vertical grid to generate.
-            Currently, only ``'hyperbolic_tangent'`` is supported. Setting this argument to ``'from_file'`` requires the additional vgrid_path argument
-        vgrid_path (str): Path to the vertical grid file if the vgrid_type is ``'from_file'``.
+        longitude_extent (Tuple[float], optional): Extent of the region in longitude (in degrees). For
+            example: ``(40.5, 50.0)``. Required only when ``hgrid_type`` doesn't already provide a
+            ``Grid`` object.
+        latitude_extent (Tuple[float], optional): Extent of the region in latitude (in degrees). For
+            example: ``(-20.0, 30.0)``. Required only when ``hgrid_type`` doesn't already provide a
+            ``Grid`` object.
+        hgrid_type (str or Grid): Type of horizontal grid to generate. Currently, only ``'even_spacing'`` is supported.
+            Setting this argument to ``'from_file'`` lazily reads ``hgrid.nc`` from ``mom_input_dir`` the first time
+            the ``hgrid`` property is accessed. You can also pass a mom6_forge ``Grid`` object directly, in which case
+            ``hgrid`` is derived from it instead of touching disk, and ``resolution``/``longitude_extent``/
+            ``latitude_extent`` are not required.
+        vgrid_type (str or VGrid): Type of vertical grid to generate. Currently, only ``'hyperbolic_tangent'`` is
+            supported. Setting this argument to ``'from_file'`` lazily reads ``vgrid.nc`` from ``mom_input_dir`` the
+            first time the ``vgrid`` property is accessed. You can also pass a mom6_forge ``VGrid`` object directly, in
+            which case ``vgrid`` is derived from it instead of touching disk, and ``number_vertical_layers``/
+            ``layer_thickness_ratio``/``depth`` are not required.
         repeat_year_forcing (bool): When ``True`` the experiment runs with
             repeat-year forcing. When ``False`` (default) then inter-annual forcing is used.
         minimum_depth (int): The minimum depth in meters of a grid cell allowed before it is masked out and treated as land.
@@ -322,25 +303,29 @@ class experiment:
         expt.boundaries = boundaries
         expt.regridding_method = regridding_method
         expt.fill_method = fill_method
+        expt.m6f_hgrid = None
+        expt.m6f_vgrid = None
+        expt.m6f_bathymetry = None
+        expt._hgrid = None
+        expt._vgrid = None
+        expt._bathymetry = None
         return expt
 
     def __init__(
         self,
         *,
         date_range,
-        resolution,
-        number_vertical_layers,
-        layer_thickness_ratio,
-        depth,
         mom_run_dir,
         mom_input_dir,
+        resolution=None,
+        number_vertical_layers=None,
+        layer_thickness_ratio=None,
+        depth=None,
         fre_tools_dir=None,
         longitude_extent=None,
         latitude_extent=None,
         hgrid_type="even_spacing",
-        hgrid_path=None,
         vgrid_type="hyperbolic_tangent",
-        vgrid_path=None,
         repeat_year_forcing=False,
         minimum_depth=4,
         tidal_constituents=["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "MM", "MF"],
@@ -367,8 +352,8 @@ class experiment:
         self.mom_input_dir.mkdir(exist_ok=True)
 
         self.date_range = [
-            dt.datetime.strptime(date_range[0], "%Y-%m-%d %H:%M:%S"),
-            dt.datetime.strptime(date_range[1], "%Y-%m-%d %H:%M:%S"),
+            dt.datetime.fromisoformat(date_range[0]),
+            dt.datetime.fromisoformat(date_range[1]),
         ]
         self.resolution = resolution
         self.number_vertical_layers = number_vertical_layers
@@ -383,63 +368,67 @@ class experiment:
         self.tidal_constituents = tidal_constituents
         self.regridding_method = regridding_method
         self.fill_method = fill_method
-        if hgrid_type == "from_file":
-            if hgrid_path is None:
-                hgrid_path = self.mom_input_dir / "hgrid.nc"
-            else:
-                hgrid_path = Path(hgrid_path)
-            try:
-                self.hgrid = xr.open_dataset(hgrid_path)
-                self.grid = Grid.from_supergrid(hgrid_path)
-                self.longitude_extent = (
-                    float(self.hgrid.x.min()),
-                    float(self.hgrid.x.max()),
-                )
-                self.latitude_extent = (
-                    float(self.hgrid.y.min()),
-                    float(self.hgrid.y.max()),
-                )
-            except FileNotFoundError:
-                if hgrid_path is None:
-                    raise FileNotFoundError(
-                        f"Horizontal grid {self.mom_input_dir}/hgrid.nc not found. Make sure `hgrid.nc`exists in {self.mom_input_dir} directory."
-                    )
-                else:
-                    raise FileNotFoundError(f"Horizontal grid {hgrid_path} not found.")
+        # `self.m6f_hgrid`/`self.m6f_vgrid`/`self.m6f_bathymetry` are the mom6_forge
+        # class objects backing the `hgrid`/`vgrid`/`bathymetry` properties (see below).
+        # When one isn't supplied directly, the properties lazily read it from
+        # `mom_input_dir` on first access.
+        self.m6f_hgrid = None
+        self.m6f_vgrid = None
+        self.m6f_bathymetry = None
+        self._hgrid = None
+        self._vgrid = None
+        self._bathymetry = None
 
+        if isinstance(hgrid_type, Grid):
+            self.m6f_hgrid = hgrid_type
+            self.longitude_extent = (
+                float(self.hgrid.x.min()),
+                float(self.hgrid.x.max()),
+            )
+            self.latitude_extent = (
+                float(self.hgrid.y.min()),
+                float(self.hgrid.y.max()),
+            )
+        elif hgrid_type == "from_file":
+            # `self.hgrid` lazily reads `mom_input_dir/hgrid.nc` the first time it's
+            # accessed. A rotation-angle discrepancy here is only warned about (not
+            # raised), so construction can still succeed and the user has a live
+            # `experiment` to call `recalculate_rotation_angle()` on afterward.
+            hgrid = self.hgrid
+            hgrid = self.m6f_hgrid.supergrid.to_ds()
+            self.longitude_extent = (float(hgrid.x.min()), float(hgrid.x.max()))
+            self.latitude_extent = (float(hgrid.y.min()), float(hgrid.y.max()))
         else:
-            if hgrid_path:
-                raise ValueError(
-                    "hgrid_path can only be set if hgrid_type is 'from_file'."
-                )
+            assert (
+                resolution is not None
+                and longitude_extent is not None
+                and latitude_extent is not None
+            ), (
+                "`resolution`, `longitude_extent`, and `latitude_extent` are required "
+                "to generate an hgrid; pass a mom6_forge `Grid` object via `hgrid_type` "
+                "instead if you don't want to specify them."
+            )
             self.longitude_extent = tuple(longitude_extent)
             self.latitude_extent = tuple(latitude_extent)
-            self.hgrid = self._make_hgrid()
+            self._make_hgrid()  # sets `self.m6f_hgrid`; `self.hgrid` derives from it
 
-        if vgrid_type == "from_file":
-            if vgrid_path is None:
-                vgrid_path = self.mom_input_dir / "vgrid.nc"
-            else:
-                vgrid_path = Path(vgrid_path)
-
-            try:
-                vgrid_from_file = xr.open_dataset(vgrid_path)
-
-            except FileNotFoundError:
-                if vgrid_path is None:
-                    raise FileNotFoundError(
-                        f"Vertical grid {self.mom_input_dir}/vcoord.nc not found. Make sure `vcoord.nc`exists in {self.mom_input_dir} directory."
-                    )
-                else:
-                    raise FileNotFoundError(f"Vertical grid {vgrid_path} not found.")
-
-            self.vgrid = self._make_vgrid(vgrid_from_file.dz.data)
+        if isinstance(vgrid_type, VGrid):
+            self.m6f_vgrid = vgrid_type
+        elif vgrid_type == "from_file":
+            # `self.vgrid` lazily reads `mom_input_dir/vgrid.nc` the first time
+            # it's accessed.
+            pass
         else:
-            if vgrid_path:
-                raise ValueError(
-                    "vgrid_path can only be set if vgrid_type is 'from_file'."
-                )
-            self.vgrid = self._make_vgrid()
+            assert (
+                number_vertical_layers is not None
+                and layer_thickness_ratio is not None
+                and depth is not None
+            ), (
+                "`number_vertical_layers`, `layer_thickness_ratio`, and `depth` are "
+                "required to generate a vgrid; pass a mom6_forge `VGrid` object via "
+                "`vgrid_type` instead if you don't want to specify them."
+            )
+            self._make_vgrid()  # sets `self.m6f_vgrid`; `self.vgrid` derives from it
 
         self.segments = {}
         self.boundaries = boundaries
@@ -459,18 +448,125 @@ class experiment:
         return json.dumps(Config.save_to_json(self, export=False), indent=4)
 
     @property
+    def hgrid(self):
+        """The horizontal supergrid, as an ``xarray.Dataset``, always regenerated live
+        from ``self.m6f_hgrid`` (a mom6_forge ``Grid`` object) -- so it stays in sync
+        with any in-place edits made to ``m6f_hgrid``.
+
+        If ``m6f_hgrid`` hasn't been supplied yet -- passed in directly via
+        ``hgrid_type``, or generated by ``_make_hgrid`` -- it's lazily built from
+        ``hgrid.nc`` in ``mom_input_dir`` the first time this property is accessed. On
+        that first load, the file's ``angle_dx`` is checked against the angle MOM6's
+        expanded-supergrid method would compute from the grid's ``x``/``y``
+        coordinates; see :meth:`recalculate_rotation_angle`.
+        """
+        if self.m6f_hgrid is None:
+            hgrid_path = self.mom_input_dir / "hgrid.nc"
+            if not hgrid_path.exists():
+                raise FileNotFoundError(
+                    f"Horizontal grid {hgrid_path} not found. Make sure `hgrid.nc` "
+                    f"exists in {self.mom_input_dir} directory, or pass in a Grid "
+                    "object via `hgrid_type`."
+                )
+            self.m6f_hgrid = Grid.from_supergrid(hgrid_path)
+            self._validate_hgrid_rotation_angle(source=hgrid_path)
+        return self.m6f_hgrid.supergrid.to_ds()
+
+    def _validate_hgrid_rotation_angle(self, source):
+        """Compare the loaded hgrid's stored ``angle_dx`` against the angle MOM6's
+        expanded-supergrid method computes from its ``x``/``y`` coordinates, and raise
+        if they disagree by more than :data:`ANGLE_DX_DISCREPANCY_THRESHOLD_DEGREES`.
+        """
+        supergrid = self.m6f_hgrid.supergrid
+        expected_angle_dx = SupergridBase.calc_supergrid_rotation_angles_using_expanded_supergrid_method(
+            supergrid.x, supergrid.y
+        )
+        max_discrepancy = float(
+            np.nanmax(np.abs(supergrid.angle_dx - expected_angle_dx))
+        )
+        if max_discrepancy > ANGLE_DX_DISCREPANCY_THRESHOLD_DEGREES:
+            warnings.warn(
+                f"The `angle_dx` stored in {source} disagrees with the angle MOM6's "
+                f"expanded-supergrid method computes from the grid's x/y coordinates "
+                f"by up to {max_discrepancy:.2f} degrees (threshold: "
+                f"{ANGLE_DX_DISCREPANCY_THRESHOLD_DEGREES} degrees). This usually means "
+                "the hgrid.nc came from a different tool or rotation convention. If the "
+                "MOM6-consistent angle is what you actually want, call "
+                "`recalculate_rotation_angle()` to overwrite it."
+            )
+
+    def recalculate_rotation_angle(self):
+        """Recompute ``angle_dx`` for the current hgrid using MOM6's
+        expanded-supergrid method, overwriting whatever is currently stored.
+
+        Call this after hand-editing the hgrid's coordinates (e.g. via
+        ``TopoEditor``/manual rotation), or if :attr:`hgrid` raised a discrepancy
+        error and the MOM6-consistent angle is what you want.
+        """
+        assert self.hgrid is not None, "No hgrid available"
+        supergrid = self.m6f_hgrid.supergrid
+        supergrid.angle_dx = SupergridBase.calc_supergrid_rotation_angles_using_expanded_supergrid_method(
+            supergrid.x, supergrid.y
+        )
+
+    @property
+    def vgrid(self):
+        """The vertical coordinate dataset (interface/cell-center depths), as an
+        ``xarray.Dataset``, always regenerated live from ``self.m6f_vgrid`` (a
+        mom6_forge ``VGrid`` object) -- so it stays in sync with any in-place edits
+        made to ``m6f_vgrid``.
+
+        If ``m6f_vgrid`` hasn't been supplied yet -- passed in directly via
+        ``vgrid_type``, or generated by ``_make_vgrid`` -- it's lazily built from
+        ``vgrid.nc`` in ``mom_input_dir`` the first time this property is accessed.
+
+        Note: each access rewrites ``vcoord.nc`` in ``mom_input_dir`` via
+        ``VGrid.write_z_file``.
+        """
+        if self.m6f_vgrid is None:
+            vgrid_path = self.mom_input_dir / "vgrid.nc"
+            if not vgrid_path.exists():
+                raise FileNotFoundError(
+                    f"Vertical grid {vgrid_path} not found. Make sure `vgrid.nc` "
+                    f"exists in {self.mom_input_dir} directory, or pass in a VGrid "
+                    "object via `vgrid_type`."
+                )
+            self.m6f_vgrid = VGrid.from_file(vgrid_path)
+            if len(self.m6f_vgrid.zi) > 2 and self.minimum_depth < self.m6f_vgrid.zi[2]:
+                print(
+                    f"Warning: Minimum depth of {self.minimum_depth}m is less than the depth of the third interface ({self.m6f_vgrid.zi[2]}m)!\n"
+                    + "This means that some areas may only have one or two layers between the surface and sea floor. \n"
+                    + "For increased stability, consider increasing the minimum depth, or adjusting the vertical coordinate to add more layers near the surface."
+                )
+        return self.m6f_vgrid.write_z_file(self.mom_input_dir / "vcoord.nc")
+
+    @property
     def bathymetry(self):
-        try:
-            return xr.open_dataset(
-                self.mom_input_dir / "bathymetry.nc",
-                decode_cf=False,
-                decode_times=False,
+        """The bathymetry, as an ``xarray.Dataset``, always regenerated live from
+        ``self.m6f_bathymetry`` (a mom6_forge ``Topo`` object) -- so it stays in sync
+        with any in-place edits made to ``m6f_bathymetry`` (e.g. via ``TopoEditor``).
+
+        If ``m6f_bathymetry`` hasn't been supplied yet -- generated by
+        ``setup_bathymetry``/``tidy_bathymetry`` -- it's lazily built from
+        ``bathymetry.nc`` in ``mom_input_dir`` (via ``Topo.from_topo_file``, using
+        ``self.hgrid``) the first time this property is accessed.
+        """
+        if self.m6f_bathymetry is None:
+            bathymetry_path = self.mom_input_dir / "bathymetry.nc"
+            if not bathymetry_path.exists():
+                raise FileNotFoundError(
+                    f"Bathymetry {bathymetry_path} not found. Make sure you've "
+                    "successfully run the setup_bathymetry method, or copied a "
+                    f"bathymetry.nc file into {self.mom_input_dir}."
+                )
+            self.hgrid  # ensures `m6f_hgrid` is populated (from disk if needed)
+            self.m6f_bathymetry = Topo.from_topo_file(
+                self.m6f_hgrid,
+                bathymetry_path,
+                min_depth=self.minimum_depth,
+                git=False,
             )
-        except Exception as e:
-            print(
-                f"Error: {e}. Opening bathymetry threw an error! Make sure you've successfully run the setup_bathymetry method, or copied a bathymetry.nc file into {self.mom_input_dir}."
-            )
-            return None
+        return self.m6f_bathymetry.gen_topo_ds()
 
     @property
     def init_velocities(self):
@@ -646,7 +742,7 @@ class experiment:
         ), "only even_spacing grid type is implemented"
 
         if self.hgrid_type == "even_spacing":
-            self.grid = Grid(
+            self.m6f_hgrid = Grid(
                 resolution=self.resolution,  # in degrees
                 xstart=self.longitude_extent[0],  # min longitude in [0, 360]
                 lenx=self.longitude_extent[1]
@@ -658,7 +754,7 @@ class experiment:
                 type="rectilinear_cartesian",  # m6b name for even_spacing
             )
 
-            return self.grid.write_supergrid(self.mom_input_dir / "hgrid.nc")
+            return self.m6f_hgrid.write_supergrid(self.mom_input_dir / "hgrid.nc")
 
     def _make_vgrid(self, thicknesses=None):
         """
@@ -674,22 +770,22 @@ class experiment:
         """
 
         if thicknesses is None:
-            self.vgrid_obj = VGrid.hyperbolic(
+            self.m6f_vgrid = VGrid.hyperbolic(
                 self.number_vertical_layers, self.depth, self.layer_thickness_ratio
             )
-            thicknesses = self.vgrid_obj.dz
+            thicknesses = self.m6f_vgrid.dz
         else:
-            self.vgrid_obj = VGrid(thicknesses)
+            self.m6f_vgrid = VGrid(thicknesses)
 
         ## Check whether the minimum depth is less than the first three layers
 
-        if len(self.vgrid_obj.zi) > 2 and self.minimum_depth < self.vgrid_obj.zi[2]:
+        if len(self.m6f_vgrid.zi) > 2 and self.minimum_depth < self.m6f_vgrid.zi[2]:
             print(
-                f"Warning: Minimum depth of {self.minimum_depth}m is less than the depth of the third interface ({self.vgrid_obj.zi[2]}m)!\n"
+                f"Warning: Minimum depth of {self.minimum_depth}m is less than the depth of the third interface ({self.m6f_vgrid.zi[2]}m)!\n"
                 + "This means that some areas may only have one or two layers between the surface and sea floor. \n"
                 + "For increased stability, consider increasing the minimum depth, or adjusting the vertical coordinate to add more layers near the surface."
             )
-        ds = self.vgrid_obj.write_z_file(self.mom_input_dir / "vcoord.nc")
+        ds = self.m6f_vgrid.write_z_file(self.mom_input_dir / "vcoord.nc")
 
         return ds
 
@@ -699,7 +795,6 @@ class experiment:
         varnames,
         arakawa_grid="A",
         vcoord_type="height",
-        rotational_method=RotationMethod.EXPAND_GRID,
         regridding_method=None,
     ):
         """
@@ -714,7 +809,6 @@ class experiment:
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             vcoord_type (Optional[str]): The type of vertical coordinate used in the forcing files.
                 Either ``'height'`` or ``'thickness'``.
-            rotational_method (Optional[RotationMethod]): The method used to rotate the velocities.
             regridding_method (Optional[str]): The type of regridding method to use. Defaults to self.regridding_method
         """
         if regridding_method is None:
@@ -861,10 +955,18 @@ class experiment:
             }
         )
 
-        self.hgrid["lon"] = self.hgrid["x"]
-        self.hgrid["lat"] = self.hgrid["y"]
+        ic_raw_eta = ic_raw_eta.rename(
+            {
+                reprocessed_var_map["tracer_lat_coord"]: "lat",
+                reprocessed_var_map["tracer_lon_coord"]: "lon",
+            }
+        )
+
+        hgrid = self.hgrid
+        hgrid["lon"] = hgrid["x"]
+        hgrid["lat"] = hgrid["y"]
         tgrid = (
-            rgd.get_hgrid_arakawa_c_points(self.hgrid, "t")
+            rgd.get_hgrid_arakawa_c_points(hgrid, "t")
             .rename({"tlon": "lon", "tlat": "lat", "nxp": "nx", "nyp": "ny"})
             .set_coords(["lat", "lon"])
         )
@@ -872,10 +974,10 @@ class experiment:
         ## Make our three horizontal regridders
 
         regridder_u = rgd.create_regridder(
-            ic_raw_u, self.hgrid, locstream_out=False, method=regridding_method
+            ic_raw_u, hgrid, locstream_out=False, method=regridding_method
         )
         regridder_v = rgd.create_regridder(
-            ic_raw_v, self.hgrid, locstream_out=False, method=regridding_method
+            ic_raw_v, hgrid, locstream_out=False, method=regridding_method
         )
         regridder_t = rgd.create_regridder(
             ic_raw_tracers, tgrid, locstream_out=False, method=regridding_method
@@ -892,14 +994,12 @@ class experiment:
         rotated_u, rotated_v = rotate(
             regridded_u,
             regridded_v,
-            radian_angle=np.radians(
-                get_rotation_angle(rotational_method, self.hgrid).values
-            ),
+            radian_angle=np.radians(_get_angle_dx(hgrid).values),
         )
 
         # Slice the velocites to the u and v grid.
-        u_points = rgd.get_hgrid_arakawa_c_points(self.hgrid, "u")
-        v_points = rgd.get_hgrid_arakawa_c_points(self.hgrid, "v")
+        u_points = rgd.get_hgrid_arakawa_c_points(hgrid, "u")
+        v_points = rgd.get_hgrid_arakawa_c_points(hgrid, "v")
         rotated_v = rotated_v[:, v_points.v_points_y.values, v_points.v_points_x.values]
         rotated_u = rotated_u[:, u_points.u_points_y.values, u_points.u_points_x.values]
         rotated_u["lon"] = u_points.ulon
@@ -1161,7 +1261,6 @@ class experiment:
         bgc_tracer_names: dict = None,
         arakawa_grid="A",
         bathymetry_path=None,
-        rotational_method=RotationMethod.EXPAND_GRID,
         regridding_method=None,
         fill_method=None,
     ):
@@ -1182,8 +1281,6 @@ class experiment:
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             bathymetry_path (Optional[str]): Path to the bathymetry file. Default is ``None``, in which case the
                 boundary condition is not masked.
-            rotational_method (Optional[str]): Method to use for rotating the boundary velocities.
-                Default is ``EXPAND_GRID``.
             regridding_method (Optional[str]): The type of regridding method to use. Defaults to self.regridding_method
             fill_method (Function): Fill method to use throughout the function. Default is ``self.fill_method``
         """
@@ -1230,7 +1327,6 @@ class experiment:
                 ),  # A number to identify the boundary; indexes from 1
                 arakawa_grid=arakawa_grid,
                 bathymetry_path=bathymetry_path,
-                rotational_method=rotational_method,
                 regridding_method=regridding_method,
                 fill_method=fill_method,
             )
@@ -1280,7 +1376,6 @@ class experiment:
         segment_number,
         arakawa_grid="A",
         bathymetry_path=None,
-        rotational_method=RotationMethod.EXPAND_GRID,
         regridding_method=None,
         fill_method=None,
     ):
@@ -1302,8 +1397,6 @@ class experiment:
                 Either ``'A'`` (default), ``'B'``, or ``'C'``.
             bathymetry_path (str): Path to the bathymetry file. Default is ``None``, in which case
                 the boundary condition is not masked.
-            rotational_method (Optional[str]): Method to use for rotating the boundary velocities.
-                Default is 'EXPAND_GRID'.
             regridding_method (Optional[str]): The type of regridding method to use. Defaults to self.regridding_method
             fill_method (Function): Fill method to use throughout the function. Default is ``rgd.fill_missing_data``
 
@@ -1334,7 +1427,6 @@ class experiment:
             infile=path_to_bc,  # location of raw boundary
             varnames=varnames,
             arakawa_grid=arakawa_grid,
-            rotational_method=rotational_method,
             regridding_method=regridding_method,
             fill_method=fill_method,
         )
@@ -1348,7 +1440,6 @@ class experiment:
         tpxo_velocity_filepath,
         tidal_constituents=None,
         bathymetry_path=None,
-        rotational_method=RotationMethod.EXPAND_GRID,
         regridding_method=None,
         fill_method=None,
     ):
@@ -1361,7 +1452,6 @@ class experiment:
             tpxo_velocity_filepath: Filepath to the TPXO velocity product. Generally of the form ``u_tidalversion.nc``
             tidal_constituents: List of tidal constituents to include in the regridding. Default is set in the experiment constructor (See :class:`~Experiment`)
             bathymetry_path (str): Path to the bathymetry file. Default is ``None``, in which case the boundary condition is not masked
-            rotational_method (str): Method to use for rotating the tidal velocities. Default is 'EXPAND_GRID'.
             regridding_method (Optional[str]): The type of regridding method to use. Defaults to self.regridding_method
             fill_method (Function): Fill method to use throughout the function. Default is ``self.fill_method``
 
@@ -1456,7 +1546,6 @@ class experiment:
                 tpxo_u,
                 tpxo_h,
                 times,
-                rotational_method=rotational_method,
                 regridding_method=regridding_method,
             )
             print("Done")
@@ -1468,10 +1557,12 @@ class experiment:
         longitude_coordinate_name="lon",
         latitude_coordinate_name="lat",
         vertical_coordinate_name="elevation",  # This is to match GEBCO
-        fill_channels=False,
+        fill_channels=True,
         positive_down=False,
         write_to_file=True,
         regridding_method=None,
+        depth_method="xesmf",
+        mask_method="dataset",
     ):
         """
         Cut out and interpolate the chosen bathymetry and then fill inland lakes.
@@ -1497,57 +1588,82 @@ class experiment:
                 bathymetry vertical coordinate is positive downwards. Default: ``False``.
             write_to_file (Optional[bool]): Whether to write the bathymetry to a file. Default: ``True``.
             regridding_method (Optional[str]): The type of regridding method to use. Defaults to self.regridding_method
+            depth_method (Optional[str]): Method used to set the depth: ``'stats'`` (statistic from
+                sub-sampled source data), ``'xesmf'`` (direct xESMF regrid of the source depth), or
+                ``'cressman'`` (Cressman interpolation). Default: ``'xesmf'``.
+            mask_method (Optional[str]): Method used to distinguish ocean from land: ``'naturalearth'``,
+                ``'ocean_frac'``, ``'dataset'``, or ``'manual'`` (uses ``self.m6f_bathymetry.user_mask``, which must
+                already be set). Default: ``'dataset'``.
         """
 
         print(
-            "Setting up bathymetry...if this fails, please follow the printed instructions with your experiment topo object, like this: [experiment_obj].topo. For example, if the output tells you to run mpi_set_from_dataset instead of set_from_dataset. You would do: [experiment_obj].topo.mpi_set_from_dataset(...)"
+            "Setting up bathymetry...if this fails, please follow the printed instructions with your experiment's m6f_bathymetry object, like this: [experiment_obj].m6f_bathymetry. For example, if the output tells you to run mpi_set_from_dataset instead of set_from_dataset. You would do: [experiment_obj].m6f_bathymetry.mpi_set_from_dataset(...)"
         )
         if regridding_method is None:
             regridding_method = self.regridding_method
 
-        self.topo = Topo(grid=self.grid, min_depth=self.minimum_depth, git=False)
+        self.m6f_bathymetry = Topo(
+            grid=self.m6f_hgrid, min_depth=self.minimum_depth, git=False
+        )
+        self._bathymetry = None  # invalidate any cached `bathymetry` view
 
-        self.topo.set_from_dataset(
+        self.m6f_bathymetry.set_from_dataset(
             bathymetry_path=bathymetry_path,
             output_dir=self.mom_input_dir,
             longitude_coordinate_name=longitude_coordinate_name,
             latitude_coordinate_name=latitude_coordinate_name,
             vertical_coordinate_name=vertical_coordinate_name,
             regridding_method=regridding_method,
-            write_to_file=True,
+            fill_channels=fill_channels,
+            is_input_positive_below_msl=positive_down,
+            write_to_file=write_to_file,
+            depth_method=depth_method,
+            mask_method=mask_method,
         )
-        self.topo.write_topo(self.mom_input_dir / "bathymetry.nc")
-        return self.topo.gen_topo_ds()
+        self.m6f_bathymetry.write_topo(self.mom_input_dir / "bathymetry.nc")
+        return self.m6f_bathymetry.gen_topo_ds()
 
     def tidy_bathymetry(
         self,
         fill_channels=False,
-        positive_down=False,
-        vertical_coordinate_name="depth",
-        bathymetry=None,
-        write_to_file=True,
-        longitude_coordinate_name="lon",
-        latitude_coordinate_name="lat",
     ):
-        self.topo.tidy_dataset(
-            fill_channels=fill_channels,
-            positive_down=positive_down,
-            vertical_coordinate_name=vertical_coordinate_name,
-            bathymetry=bathymetry,
-            output_dir=self.mom_input_dir,
-            write_to_file=write_to_file,
-            longitude_coordinate_name=longitude_coordinate_name,
-            latitude_coordinate_name=latitude_coordinate_name,
-        )
-        self.topo.write_topo(
+        if fill_channels:
+            self.m6f_bathymetry.fill_inland_lakes_and_channels()
+        self.m6f_bathymetry.write_topo(
             self.mom_input_dir / "bathymetry.nc",
         )
-        return self.topo.gen_topo_ds()
+        return self.m6f_bathymetry.gen_topo_ds()
 
-    def run_FRE_tools(self, layout=None):
+    def setup_chl(self, processed_seawifs_path, output_path=None):
+        """
+        Interpolate and fill the SeaWiFS chlorophyll climatology onto the experiment's grid.
+
+        Output is saved in the input directory of the experiment, unless a different
+        ``output_path`` is provided.
+
+        Arguments:
+            processed_seawifs_path (str): Path to the preprocessed SeaWiFS chlorophyll dataset.
+            output_path (Optional[str]): Path to save the output NetCDF file. Defaults to
+                ``mom_input_dir / f"seawifs-clim-1997-2010-{expt_name}.nc"``.
+        """
+        self.hgrid  # ensures `m6f_hgrid` is populated (from disk if needed)
+        self.bathymetry  # ensures `m6f_bathymetry` is populated (from disk if needed)
+
+        if output_path is None:
+            output_path = (
+                self.mom_input_dir / f"seawifs-clim-1997-2010-{self.expt_name}.nc"
+            )
+
+        return interpolate_and_fill_seawifs(
+            self.m6f_hgrid,
+            self.m6f_bathymetry,
+            processed_seawifs_path,
+            output_path=output_path,
+        )
+
+    def run_FRE_tools(self):
         """
         A wrapper for FRE Tools ``check_mask``, ``make_solo_mosaic``, and ``make_quick_mosaic``.
-        User provides processor ``layout`` tuple of processing units.
 
         This method is not needed if you're running under NUOPC (e.g., NCAR/CROCODILE or most ACCESS/COSIMA people). However, if you're not using the auto-mask table, then this is the only way within the regional-mom6 package to generate a cpu mask file.
 
@@ -1570,7 +1686,10 @@ class experiment:
             )
 
         if "tile" not in self.hgrid:
-            self.hgrid = self.hgrid.assign(
+            # `self.hgrid` always regenerates from `m6f_hgrid`, so the "tile" coord is
+            # added to a local copy and written straight to `hgrid.nc` here, rather than
+            # persisted back onto `self.hgrid` (which would just be regenerated away).
+            hgrid_with_tile = self.hgrid.assign(
                 {
                     "tile": (
                         (),
@@ -1585,7 +1704,7 @@ class experiment:
                     )
                 }
             )
-            self.hgrid.to_netcdf(
+            hgrid_with_tile.to_netcdf(
                 self.mom_input_dir / "hgrid.nc", format="NETCDF3_64BIT", mode="w"
             )
 
@@ -1616,133 +1735,27 @@ class experiment:
             sep="\n\n",
         )
 
-        # Finally, run the check mask function (kept separate in case people want to update their layout)
-        # to make the cpu mask file. This is not used if auto_masktable is set to true in MOM_input
-        if layout != None:
-            self.configure_cpu_layout(layout)
-
-    def configure_cpu_layout(self, layout):
+    def setup_generic(self, ncpus=100, mask_land_cpus=True):
         """
-        Wrapper for the ``check_mask`` function of GFDL's FRE Tools. User provides processor
-        ``layout`` tuple of processing units.
-        """
+        Set up the run directory for the model run. This is a multi step process - given that NUOPC vs FMS based runs are quite different, this function handles all of the setup steps that they share in common, with more specific steps performed in setup_rOM3 and setup_FMS_version respectively.
 
-        print(
-            "OUTPUT FROM CHECK MASK:\n\n",
-            subprocess.run(
-                str(self.fre_tools_dir / "check_mask")
-                + f" --grid_file ocean_mosaic.nc --ocean_topog bathymetry.nc --layout {layout[0]},{layout[1]} --halo 4",
-                shell=True,
-                cwd=self.mom_input_dir,
-            ),
-        )
-        self.layout = layout
-        return
-
-    def setup_run_directory(
-        self,
-        surface_forcing=None,
-        using_payu=False,
-        overwrite=False,
-        with_tides=False,
-    ):
-        """
-        Set up the run directory for MOM6. Either copy a pre-made set of files, or modify
-        existing files in the 'rundir' directory for the experiment.
+        The main thing this function does is manage the MOM_override file, as this is common to both use cases.
 
         Arguments:
-            surface_forcing (Optional[str]): Specify the choice of surface forcing, one
-                of: ``'jra'`` or ``'era5'``. If not prescribed then constant fluxes are used.
-            using_payu (Optional[bool]): Whether or not to use payu (https://github.com/payu-org/payu)
-                to run the model. If ``True``, a payu configuration file will be created.
-                Default: ``False``.
-            overwrite (Optional[bool]): Whether or not to overwrite existing files in the
-                run directory. If ``False`` (default), will only modify the ``MOM_layout`` file and will
-                not re-copy across the rest of the default files.
+            ncpus (Optional[int]): The number of PEs to use
+            mask_land_cpus (Optional[bool]): If your domain has enough land in it that some processors would only have land to deal with, set to True. If a mostly water domain, set to False otherwise the automatic mask table throws a fatal (see issue: https://github.com/issues/created?issue=mom-ocean%7CMOM6%7C1686)
         """
-
-        ## Get the path to the regional_mom package on this computer
-        premade_rundir_path = Path(
-            importlib.resources.files("regional_mom6")
-            / "demos"
-            / "premade_run_directories"
-        )
-
-        if not premade_rundir_path.exists():
-            print("Could not find premade run directories at ", premade_rundir_path)
-            print(
-                "Perhaps the package was imported directly rather than installed with conda. Checking if this is the case... ",
-                end="",
-            )
-
-            premade_rundir_path = Path(
-                importlib.resources.files("regional_mom6").parent
-                / "demos"
-                / "premade_run_directories"
-            )
-            if not premade_rundir_path.exists():
-                raise ValueError(
-                    f"Cannot find the premade run directory files at {premade_rundir_path} either.\n\n"
-                    + "There may be an issue with package installation. Check that the `premade_run_directory` folder is present in one of these two locations"
-                )
-            else:
-                print("Found run files. Continuing...")
-
-        # Define the locations of the directories we'll copy files across from. Base contains most of the files, and overwrite replaces files in the base directory.
-        base_run_dir = Path(premade_rundir_path / "common_files")
-        if not premade_rundir_path.exists():
-            raise ValueError(
-                f"Cannot find the premade run directory files at {premade_rundir_path}.\n\n"
-                + "These files missing might be indicating an error during the package installation!"
-            )
-        if surface_forcing:
-            overwrite_run_dir = Path(premade_rundir_path / f"{surface_forcing}_surface")
-
-            if not overwrite_run_dir.exists():
-                available = [x for x in premade_rundir_path.iterdir() if x.is_dir()]
-                raise ValueError(
-                    f"Surface forcing {surface_forcing} not available. Please choose from {str(available)}"  ##Here print all available run directories
-                )
-        else:
-            ## In case there is additional forcing (e.g., tides) then we need to modify the run dir to include the additional forcing.
-            overwrite_run_dir = False
-
-        # Check if we can implement tides
+        # Check if we need tides
+        with_tides = len(self.tidal_constituents) > 0
         if with_tides:
             tidal_files_exist = any(Path(self.mom_input_dir).rglob("tu*"))
 
             if not tidal_files_exist:
                 raise ValueError(
-                    "No files with 'tu' in their names found in the forcing or input directory. If you meant to use tides, please run the setup_boundary_tides method first. That does output some tidal files."
+                    "No files with 'tu' in their names found in the forcing or input directory. If you meant to use tides, please run the setup_boundary_tides method first to create tidal files. If you didn't, set ``tidal_constituants = []`` when defining experiment."
                 )
 
-        # Set local var
-        ncpus = None
-
-        # 3 different cases to handle:
-        #   1. User is creating a new run directory from scratch. Here we copy across all files and modify.
-        #   2. User has already created a run directory, and wants to modify it. Here we only modify the MOM_layout file.
-        #   3. User has already created a run directory, and wants to overwrite it. Here we copy across all files and modify. This requires overwrite = True
-
-        if not overwrite:
-            for file in base_run_dir.glob(
-                "*"
-            ):  ## copy each file individually if it doesn't already exist
-                if not (self.mom_run_dir / file.name).exists():
-                    ## Check whether this file exists in an override directory or not
-                    if (
-                        overwrite_run_dir != False
-                        and (overwrite_run_dir / file.name).exists()
-                    ):
-                        shutil.copy(overwrite_run_dir / file.name, self.mom_run_dir)
-                    else:
-                        shutil.copy(base_run_dir / file.name, self.mom_run_dir)
-        else:
-            shutil.copytree(base_run_dir, self.mom_run_dir, dirs_exist_ok=True)
-            if overwrite_run_dir != False:
-                shutil.copytree(base_run_dir, self.mom_run_dir, dirs_exist_ok=True)
-
-        ## Make symlinks between run and input directories
+        ### Make symlinks between run and input directories ###
         inputdir_in_rundir = self.mom_run_dir / "inputdir"
         rundir_in_inputdir = self.mom_input_dir / "rundir"
 
@@ -1752,85 +1765,26 @@ class experiment:
         rundir_in_inputdir.unlink(missing_ok=True)
         rundir_in_inputdir.symlink_to(self.mom_run_dir)
 
-        ## Get mask table information
-        mask_table = None
-        for p in self.mom_input_dir.glob("mask_table.*"):
-            if mask_table != None:
-                print(
-                    f"WARNING: Multiple mask tables found. Defaulting to {mask_table}. If this is not what you want, remove it from the run directory and try again."
-                )
-                break
+        ### Write to the MOM_override file ###
 
-            _, masked, layout = p.name.split(".")
-            mask_table = p.name
-            x, y = (int(v) for v in layout.split("x"))
-            ncpus = (x * y) - int(masked)
-            layout = (
-                x,
-                y,
-            )  # This is a local variable keeping track of the layout as read from the mask table. Not to be confused with self.layout which is unchanged and may differ.
-
-            print(
-                f"Mask table {p.name} read. Using this to infer the cpu layout {layout}, total masked out cells {masked}, and total number of CPUs {ncpus}."
-            )
-        # Case where there's no mask table. Either because user hasn't run FRE tools, or because the domain is mostly water.
-        if mask_table == None:
-            # Here we define a local copy of the layout just for use within this function.
-            # This prevents the layout from being overwritten in the main class in case
-            # in case the user accidentally loads in the wrong mask table.
-            layout = self.layout
-            if layout == None:
-                print(
-                    "WARNING: No mask table found, and the cpu layout has not been set. \nAt least one of these is requiret to set up the experiment if you're running MOM6 standalone with the FMS coupler. \nIf you're running within CESM, ignore this message."
-                )
-            else:
-                print(
-                    f"No mask table found, but the cpu layout has been set to {self.layout} This suggests the domain is mostly water, so there are "
-                    + "no `non compute` cells that are entirely land. If this doesn't seem right, "
-                    + "ensure you've already run the `FRE_tools` method which sets up the cpu mask table. Keep an eye on any errors that might print while"
-                    + "the FRE tools (which run C++ in the background) are running."
-                )
-
-                ncpus = layout[0] * layout[1]
-                print("Number of CPUs required: ", ncpus)
-
-        ## Modify the MOM_layout file to have correct horizontal dimensions and CPU layout
-        # TODO Re-implement with package that works for this file type? or at least tidy up code
-        MOM_layout_dict = mpt.read_MOM_file_as_dict("MOM_layout", self.mom_run_dir)
-        if "MASKTABLE" in MOM_layout_dict:
-            MOM_layout_dict["MASKTABLE"]["value"] = (
-                mask_table or " # MASKTABLE = no mask table"
-            )
-        if (
-            "LAYOUT" in MOM_layout_dict
-            and "IO_Layout" not in MOM_layout_dict
-            and layout != None
-        ):
-            MOM_layout_dict["LAYOUT"]["value"] = str(layout[1]) + "," + str(layout[0])
-        if "NIGLOBAL" in MOM_layout_dict:
-            MOM_layout_dict["NIGLOBAL"]["value"] = self.hgrid.nx.shape[0] // 2
-        if "NJGLOBAL" in MOM_layout_dict:
-            MOM_layout_dict["NJGLOBAL"]["value"] = self.hgrid.ny.shape[0] // 2
-
-        MOM_input_dict = mpt.read_MOM_file_as_dict("MOM_input", self.mom_run_dir)
         MOM_override_dict = mpt.read_MOM_file_as_dict("MOM_override", self.mom_run_dir)
-        # The number of boundaries is reflected in the number of segments setup in setup_ocean_state_boundary under expt.segments.
-        # The setup_boundary_tides function currently only works with rectangular grids amd sets up 4 segments, but DOESN"T save them to expt.segments.
-        # Therefore, we can use expt.segments to determine how many segments we need for MOM_input. We can fill the empty segments with a empty string to make sure it is overriden correctly.
 
-        # Others
         MOM_override_dict["MINIMUM_DEPTH"]["value"] = float(self.minimum_depth)
+
+        # Define spatial dimensions
+        nx = self.hgrid.nx.shape[0] // 2
+        ny = self.hgrid.ny.shape[0] // 2
         MOM_override_dict["NK"]["value"] = len(self.vgrid.zl.values)
+        MOM_override_dict["NIGLOBAL"]["value"] = nx
+        MOM_override_dict["NJGLOBAL"]["value"] = ny
 
-        # OBC Adjustments
-
-        # Delete MOM_input OBC stuff that is indexed because we want them only in MOM_override.
-        print(
-            "Deleting indexed OBC keys from MOM_input_dict in case we have a different number of segments"
-        )
-        keys_to_delete = [key for key in MOM_input_dict if "_SEGMENT_00" in key]
-        for key in keys_to_delete:
-            del MOM_input_dict[key]
+        # If we're not using the Auto Mask Table feature, need a mask table:
+        if mask_land_cpus == True:
+            MOM_override_dict["AUTO_MASKTABLE"]["value"] = True
+        else:
+            # No mask table at all
+            MOM_override_dict["AUTO_MASKTABLE"]["value"] = False
+            MOM_override_dict["MASKTABLE"]["value"] = "None"
 
         # Define number of OBC segments
         MOM_override_dict["OBC_NUMBER_OF_SEGMENTS"]["value"] = len(
@@ -1909,35 +1863,190 @@ class experiment:
             )
         # Tides OBC adjustments
         if with_tides:
+
             # Include internal tide forcing
             MOM_override_dict["TIDES"]["value"] = "True"
+            MOM_override_dict["TIDES"][
+                "comment"
+            ] = "This turns on body tidal forcing in the interior of domain."
+            for constituent in self.tidal_constituents:
+                MOM_override_dict[f"TIDE_{constituent.upper()}"]["value"] = "True"
 
             # OBC tides
+            MOM_override_dict["OBC_TIDE_CONSTITUENTS"]["value"] = (
+                '"' + ", ".join(self.tidal_constituents) + '"'
+            )
+            MOM_override_dict["OBC_TIDE_CONSTITUENTS"][
+                "comment"
+            ] = "OBC_TIDE constituent settings define the tidal forcing at boundaries"
             MOM_override_dict["OBC_TIDE_ADD_EQ_PHASE"]["value"] = "True"
             MOM_override_dict["OBC_TIDE_N_CONSTITUENTS"]["value"] = len(
                 self.tidal_constituents
-            )
-            MOM_override_dict["OBC_TIDE_CONSTITUENTS"]["value"] = (
-                '"' + ", ".join(self.tidal_constituents) + '"'
             )
             MOM_override_dict["OBC_TIDE_REF_DATE"]["value"] = self.date_range[
                 0
             ].strftime("%Y, %m, %d")
 
+        # Chlorophyll shortwave penetration, if setup_chl has been run
+        chl_files = list(Path(self.mom_input_dir).glob("seawifs-clim-*.nc"))
+        if chl_files:
+            MOM_override_dict["CHL_FILE"]["value"] = f'"{chl_files[0].name}"'
+            MOM_override_dict["CHL_FROM_FILE"]["value"] = "True"
+            MOM_override_dict["VAR_PEN_SW"]["value"] = "True"
+            MOM_override_dict["PEN_SW_NBANDS"]["value"] = 3
+
         for key, val in MOM_override_dict.items():
             if isinstance(val, dict) and key != "original":
                 MOM_override_dict[key]["override"] = True
-        mpt.write_MOM_file(MOM_input_dict, self.mom_run_dir)
         mpt.write_MOM_file(MOM_override_dict, self.mom_run_dir)
-        mpt.write_MOM_file(MOM_layout_dict, self.mom_run_dir)
 
-        ## If using payu to run the model, create a payu configuration file
-        if not using_payu and os.path.exists(f"{self.mom_run_dir}/config.yaml"):
-            os.remove(f"{self.mom_run_dir}/config.yaml")
-        elif ncpus == None:
+        # Modify the config.yaml file. This is the same whether NUOPC or FMS
+        yaml = YAML()
+        yaml.preserve_quotes = True
+        yaml.default_flow_style = False
+        yaml.indent(
+            mapping=4, sequence=4, offset=4
+        )  # Preserve the 4 space indent formatting
+        yaml.width = 4096  # Prevent line wrapping
+        with open(self.mom_run_dir / "config.yaml", "r") as file:
+            config = yaml.load(file)
+        config["ncpus"] = ncpus
+        config["jobname"] = self.mom_run_dir.name
+        config["input"][0] = str(self.mom_input_dir)
+        with open(self.mom_run_dir / "config.yaml", "w") as file:
+            yaml.dump(config, file)
+
+        return
+
+    def setup_rOM3(self, ncpus=208, mask_land_cpus=True, overwrite=True):
+        """
+        Set up the run directory for an ACCESS-regional-ocean-model-3 experiment. This function copies existing configuration files (MOM_input,config.yaml etc.) from an ACCESS-NRI supported source to ensure that users have access to the latest executable and fixes.
+
+
+        Arguments:
+            ncpus (Optional[int]): The number of PEs to use
+            mask_land_cpus (Optional[bool]): If your domain has enough land in it that some processors would only have land to deal with, set to True. If a mostly water domain, set to False otherwise the automatic mask table throws a fatal (see issue: https://github.com/issues/created?issue=mom-ocean%7CMOM6%7C1686)
+            overwrite (Optional[bool]): If true, reset the run directory. Set to False to attempt to attempt to modify the files in an exsiting run directory.
+        """
+        if os.path.exists(self.mom_run_dir) and overwrite:
+            shutil.rmtree(self.mom_run_dir)
+        else:
             print(
-                "WARNING: Layout has not been set! Cannot create payu configuration file. Run the FRE_tools first."
+                "Overwrite set to False. I'll attempt to modify existing files in the directory rather than re-populate it from scratch. \nIf there are issues, try re-run with overwrite=True, or make your intended changes manually."
             )
+
+        # First, make the ESMF mesh file required for all NUOPC based runs, like rom3
+        self.topo.write_esmf_mesh(self.mom_input_dir / "access-rom3-ESMFmesh.nc")
+        # Now modify to make a mask free version
+        maskmesh = xr.open_dataset(self.mom_input_dir / "access-rom3-ESMFmesh.nc")
+        maskmesh.elementMask[:] = 1
+        maskmesh.to_netcdf(self.mom_input_dir / "access-rom3-nomask-ESMFmesh.nc")
+
+        #! PLACEHOLDER
+        #! need to implement something like:
+        #! payu clone stencil_name self.mom_run_dir.
+        #!
+        shutil.copytree(
+            "/g/data/ol01/ab8992/access-om3-configs",
+            self.mom_run_dir,
+            dirs_exist_ok=True,
+        )
+        #!
+        #! END PLACEHOLDER
+
+        # Run the generic setup that's required for all rmom6 runs
+
+        self.setup_generic(ncpus=ncpus, mask_land_cpus=mask_land_cpus)
+
+        nx = self.hgrid.nx.shape[0] // 2
+        ny = self.hgrid.ny.shape[0] // 2
+        with open(f"{self.mom_run_dir}/nuopc.runconfig", "r") as file:
+            lines = file.readlines()
+            for i in range(len(lines)):
+                if "     start_ymd" in lines[i]:
+                    lines[i] = (
+                        f"     start_ymd = {self.date_range[0].strftime('%Y%m%d')}\n"
+                    )
+                if "ocn_nx" in lines[i]:
+                    lines[i] = f"     ocn_nx = {nx}\n"
+                if "ocn_ny" in lines[i]:
+                    lines[i] = f"     ocn_ny = {ny}\n"
+        with open(f"{self.mom_run_dir}/nuopc.runconfig", "w") as file:
+            file.writelines(lines)
+
+        # Modify the drof / datm files to all have the right number of x and y points
+        datm = f90nml.read(self.mom_run_dir / "datm_in")
+        datm["datm_nml"]["nx_global"]
+
+        for i in ["drof", "datm"]:
+            file = f90nml.read(self.mom_run_dir / f"{i}_in")
+            file[f"{i}_nml"]["nx_global"] = nx
+            file[f"{i}_nml"]["ny_global"] = ny
+            file.write(self.mom_run_dir / f"{i}_in", force=True)
+
+        return
+
+    def setup_fms_version(self, ncpus=100, surface_forcing=None, mask_land_cpus=True):
+        """
+        Set up the run directory for MOM6. Either copy a pre-made set of files, or modify
+        existing files in the 'rundir' directory for the experiment.
+
+        Arguments:
+            surface_forcing (Optional[str]): Specify the choice of surface forcing, one
+                of: ``'jra'`` or ``'era5'``. If not prescribed then constant fluxes are used.
+            mask_land_cpus (Optional[bool]): If your domain has enough land in it that some processors would only have land to deal with, set to True. If a mostly water domain, set to False otherwise the automatic mask table throws a fatal (see issue: https://github.com/issues/created?issue=mom-ocean%7CMOM6%7C1686)
+        """
+
+        ## Get the path to the regional_mom package on this computer
+        premade_rundir_path = Path(
+            importlib.resources.files("regional_mom6")
+            / "demos"
+            / "premade_run_directories"
+        )
+
+        if not premade_rundir_path.exists():
+            print("Could not find premade run directories at ", premade_rundir_path)
+            print(
+                "Perhaps the package was imported directly rather than installed with conda. Checking if this is the case... ",
+                end="",
+            )
+
+            premade_rundir_path = Path(
+                importlib.resources.files("regional_mom6").parent
+                / "demos"
+                / "premade_run_directories"
+            )
+            if not premade_rundir_path.exists():
+                raise ValueError(
+                    f"Cannot find the premade run directory files at {premade_rundir_path} either.\n\n"
+                    + "There may be an issue with package installation. Check that the `premade_run_directory` folder is present in one of these two locations"
+                )
+            else:
+                print("Found run files. Continuing...")
+
+        # Define the locations of the directories we'll copy files across from. Base contains most of the files, and overwrite replaces files in the base directory.
+        base_run_dir = Path(premade_rundir_path / "common_files")
+        if not premade_rundir_path.exists():
+            raise ValueError(
+                f"Cannot find the premade run directory files at {premade_rundir_path}.\n\n"
+                + "These files missing might be indicating an error during the package installation!"
+            )
+        if surface_forcing:
+            overwrite_run_dir = Path(premade_rundir_path / f"{surface_forcing}_surface")
+
+            if not overwrite_run_dir.exists():
+                available = [x for x in premade_rundir_path.iterdir() if x.is_dir()]
+                raise ValueError(
+                    f"Surface forcing {surface_forcing} not available. Please choose from {str(available)}"  ##Here print all available run directories
+                )
+        else:
+            ## In case there is additional forcing (e.g., tides) then we need to modify the run dir to include the additional forcing.
+            overwrite_run_dir = False
+
+        shutil.copytree(base_run_dir, self.mom_run_dir, dirs_exist_ok=True)
+        if overwrite_run_dir != False:
+            shutil.copytree(overwrite_run_dir, self.mom_run_dir, dirs_exist_ok=True)
+
         else:
             with open(f"{self.mom_run_dir}/config.yaml", "r") as file:
                 lines = file.readlines()
@@ -1956,6 +2065,8 @@ class experiment:
 
             with open(f"{self.mom_run_dir}/config.yaml", "w") as file:
                 file.writelines(lines)
+
+        self.setup_generic(ncpus=ncpus, mask_land_cpus=mask_land_cpus)
 
         # Modify input.nml
         nml = f90nml.read(self.mom_run_dir / "input.nml")
@@ -2155,7 +2266,6 @@ class segment:
         infile,
         varnames: dict,
         arakawa_grid="A",
-        rotational_method=RotationMethod.EXPAND_GRID,
         regridding_method="bilinear",
         time_units="days",
         calendar="gregorian",
@@ -2166,7 +2276,6 @@ class segment:
         Cut out and interpolate the velocities and tracers.
 
         Arguments:
-            rotational_method (RotationMethod): The method to use for rotation of the velocities. Currently, the default method, ``EXPAND_GRID``, works even with non-rotated grids.
             infile (Union[str, Path]): Path to the raw, unprocessed boundary segment.
             varnames (Dict[str, str]): Mapping between the variable/dimension names and
             standard naming convention of this pipeline, e.g., ``{"xq": "longitude,
@@ -2245,9 +2354,7 @@ class segment:
             u_regridded,
             v_regridded,
             radian_angle=np.radians(
-                get_rotation_angle(
-                    rotational_method, self.hgrid, orientation=self.orientation
-                ).values
+                _get_angle_dx(self.hgrid, orientation=self.orientation).values
             ),
         )
 
@@ -2437,7 +2544,6 @@ class segment:
         tpxo_u,
         tpxo_h,
         times,
-        rotational_method=RotationMethod.EXPAND_GRID,
         regridding_method="bilinear",
         fill_method=rgd.fill_missing_data,
         regridders=None,
@@ -2463,8 +2569,6 @@ class segment:
             infile_td (str): Raw tidal file/directory.
             tpxo_v, tpxo_u, tpxo_h (xarray.Dataset): Specific adjusted for MOM6 tpxo datasets (Adjusted with :func:`~experiment.setup_boundary_tides`)
             times (pd.DateRange): The start date of our model period.
-            rotational_method (RotationMethod): The method to use for rotation of the velocities.
-                The default method, ``EXPAND_GRID``, works even with non-rotated grids.
             regridding_method (str): regridding method to use throughout the function. Default is ``'bilinear'``
             fill_method (Function): Fill method to use throughout the function. Default is ``rgd.fill_missing_data``
             regridders (dict, optional): Pre-built regridders with keys ``"elev"``, ``"u"``, ``"v"``.
@@ -2604,9 +2708,7 @@ class segment:
 
         # Rotate
         INC -= np.radians(
-            get_rotation_angle(
-                rotational_method, self.hgrid, orientation=self.orientation
-            ).data[np.newaxis, :]
+            _get_angle_dx(self.hgrid, orientation=self.orientation).data[np.newaxis, :]
         )
 
         ua, va, up, vp = ep2ap(SEMA, ECC, INC, PHA)
