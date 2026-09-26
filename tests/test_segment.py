@@ -22,6 +22,7 @@ from mom6_forge.grid import Grid
 from mom6_forge.topo import Topo
 from regional_mom6 import regridding as rgd
 from regional_mom6.segment import Segment
+from regional_mom6.utils import earth_to_grid, rotate
 
 # ---------------------------------------------------------------------------
 # Construction & validation
@@ -71,6 +72,40 @@ def test_segment_from_hgrid_missing_angle_dx_warns(get_rectilinear_hgrid):
 def test_segment_cardinal_invalid_orientation_raises(get_rectilinear_hgrid):
     with pytest.raises(ValueError, match="orientation must be one of"):
         Segment.cardinal(get_rectilinear_hgrid, "northeast", "segment_001")
+
+
+# ---------------------------------------------------------------------------
+# OBC velocity-rotation regression (regrid_velocity_tracers's earth_to_grid call)
+#
+# The full method needs a raw source file and real xesmf regridders, so this
+# is a unit-level stand-in: it takes `self.angle` straight off a Segment built
+# the same way `regrid_velocity_tracers` gets it (Segment.from_hgrid slicing
+# hgrid.angle_dx), and checks that rotating a uniform eastward earth-relative
+# flow (u=1, v=0) through `earth_to_grid` -- the same call
+# `regrid_velocity_tracers` makes right after regridding u/v -- lands on the
+# analytically expected grid-relative components, on a genuinely rotated
+# (non-zero angle_dx) segment.
+# ---------------------------------------------------------------------------
+
+
+def test_segment_angle_on_rotated_hgrid_rotates_eastward_flow_correctly(
+    get_rotated_hgrid,
+):
+    segment = Segment.cardinal(get_rotated_hgrid, "south", "segment_001")
+    angle_dx = segment.angle.values
+
+    assert np.abs(angle_dx).min() > 20.0  # this segment really is rotated
+
+    u_earth = np.ones_like(angle_dx)
+    v_earth = np.zeros_like(angle_dx)
+    u_grid, v_grid = earth_to_grid(u_earth, v_earth, angle_deg=angle_dx)
+
+    np.testing.assert_allclose(u_grid, np.cos(np.radians(angle_dx)))
+    np.testing.assert_allclose(v_grid, -np.sin(np.radians(angle_dx)))
+
+    # The pre-fix call site used +angle_dx here; confirm that would have been wrong.
+    buggy_u, buggy_v = rotate(u_earth, v_earth, radian_angle=np.radians(angle_dx))
+    assert not np.allclose(buggy_v, v_grid)
 
 
 def test_segment_from_hgrid_invalid_axis_raises(get_rectilinear_hgrid):
