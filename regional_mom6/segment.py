@@ -1059,7 +1059,7 @@ class Segment:
                 "dtype": "int32",
             },
         }
-        segment_out = rgd.mask_dataset(segment_out, self)
+        # segment_out = rgd.mask_dataset(segment_out, self)
         encoding_dict = rgd.generate_encoding(
             segment_out,
             encoding_dict,
@@ -1319,7 +1319,7 @@ class Segment:
                 "Masking tides dataset with it may result in errors like large surface values one timestep in. "
                 "To avoid masking tides, don't pass a topo to Segment construction for tidal-only use."
             )
-        ds = rgd.mask_dataset(ds, self)
+        # ds = rgd.mask_dataset(ds, self)
         ## Perform Encoding ##
 
         fname = f"{filename}_{self.segment_name}.nc"
