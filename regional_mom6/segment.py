@@ -82,7 +82,7 @@ import xarray as xr
 from mom6_forge.grid import Grid
 
 from regional_mom6 import regridding as rgd
-from regional_mom6.utils import ap2ep, ep2ap, rotate, try_pint_convert
+from regional_mom6.utils import ap2ep, earth_to_grid, ep2ap, try_pint_convert
 from regional_mom6.validate import validate_obc_file
 
 # Legacy full-edge cases: (axis held fixed, index along that axis)
@@ -889,10 +889,10 @@ class Segment:
             )
         )
 
-        rotated_u, rotated_v = rotate(
+        rotated_u, rotated_v = earth_to_grid(
             u_regridded,
             v_regridded,
-            radian_angle=np.radians(self.angle.values),
+            angle_deg=self.angle.values,
         )
 
         rotated_u.name = reprocessed_var_map["u_var_name"]
