@@ -104,6 +104,11 @@ _CARDINAL_OCEAN_SIDE = {
     "east": "west",
 }
 
+# The two full edges that don't exist on a zonally reentrant (cyclic-x) grid:
+# column 0 and column -1 are the same seam, which MOM6 joins via
+# REENTRANT_X, so there is no outer edge there to hold an OBC.
+_CYCLIC_X_SEAM_EDGES = ("east", "west")
+
 # Which compass side is the ocean/interior on, for each axis, mapped to
 # whether the parallel (along-segment) MOM6 index counts up or down. A "nyp"
 # (horizontal, J-fixed) segment's interior is either "north" or "south" of
@@ -283,6 +288,15 @@ class Segment:
                 f"take ocean_side in {sorted(valid_sides)}."
             )
         mom6_index_reverse = valid_sides[ocean_side]
+
+        if axis == "nxp" and is_full_edge and Grid.is_cyclic_x(hgrid):
+            raise ValueError(
+                f"Segment {segment_name!r} is a full east/west edge of a "
+                "cyclic-x (zonally reentrant) grid. Those edges are the "
+                "periodic seam MOM6 joins with REENTRANT_X, not a boundary, "
+                "so there is nothing to put an OBC on. Use only the north/"
+                "south edges, or an interior nxp line, on a cyclic grid."
+            )
 
         if topo is not None:
             cls._check_land_capped_endpoints(
@@ -636,18 +650,24 @@ class Segment:
         this is meant as a sensible default for callers building a segment
         list, e.g. CrocoDash's ``configure_forcings(boundaries=None, ...)``.
 
+        On a cyclic-x (zonally reentrant) grid, ``'east'`` and ``'west'``
+        are never returned: they are the same periodic seam, not an outer
+        edge, however wet the column there is. Such a grid can only have
+        ``'north'``/``'south'`` cardinal boundaries.
+
         Doesn't apply to custom/interior boundaries -- those can't be
         inferred from topo alone and must always be specified explicitly.
 
         Arguments:
             topo (mom6_forge.topo.Topo): A ``Topo`` instance for the grid in
-                question; only its ``supergridmask`` is used.
+                question; its ``supergridmask`` and grid are used.
         """
         mask = topo.supergridmask
+        skip = _CYCLIC_X_SEAM_EDGES if topo._grid.supergrid.is_cyclic_x else ()
         return [
             orientation
             for orientation, (axis, index) in _CARDINAL_AXES.items()
-            if bool(mask.isel({axis: index}).any())
+            if orientation not in skip and bool(mask.isel({axis: index}).any())
         ]
 
     @classmethod
