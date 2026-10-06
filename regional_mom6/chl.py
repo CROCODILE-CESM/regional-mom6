@@ -102,6 +102,17 @@ def interpolate_and_fill_seawifs(
                 )
             }
         )
+        # SeaWiFS is global: copy one column across its seam on each side so
+        # bilinear covers targets between its last and first column (e.g. on
+        # a grid that wraps around in longitude).
+        src_ds = xr.concat(
+            [
+                src_ds.isel(lon=[-1]).assign_coords(lon=[src_lon[-1] - 360.0]),
+                src_ds,
+                src_ds.isel(lon=[0]).assign_coords(lon=[src_lon[0] + 360.0]),
+            ],
+            dim="lon",
+        )
 
         # Regrid to super-sampled sub-point grid and average back to model grid
         q_sub, regridder = regrid_with_subsampling(
