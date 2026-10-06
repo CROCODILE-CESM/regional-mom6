@@ -918,7 +918,10 @@ class Segment:
         if "since" not in time_units:
             # Anchor on the startdate epoch. This was arange(0, ntimes), so
             # every chunk of a window restarted at zero and the merged axis ran
-            # backwards. The first record is pulled back to a whole unit.
+            # backwards. Records keep their source times: MOM6 interpolates
+            # linearly between them, so moving a daily mean stamped at noon to
+            # midnight would apply it half a day early. The caller must supply
+            # records bracketing the run, as MOM6 stops on a time outside them.
             ntimes = segment_out[reprocessed_var_map["time_var_name"]].shape[0]
             if src_times is None:
                 values = np.arange(ntimes, dtype=float)
@@ -936,7 +939,7 @@ class Segment:
                     dtype=np.float64,
                 )
                 offsets = np.asarray(offsets, dtype=float)
-                values = offsets - offsets[0] + np.floor(offsets[0] + 1e-9)
+                values = offsets
             times = xr.DataArray(values, dims=["time"])
 
             # This to change the time coordinate.
