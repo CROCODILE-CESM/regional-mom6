@@ -1003,8 +1003,9 @@ def test_regrid_velocity_tracers_chunks_share_one_epoch(toy_glorys_ds, tmp_path)
     np.testing.assert_allclose(second, [3.0, 4.0, 5.0])
     assert (np.diff(np.concatenate([first, second])) > 0).all()
 
-    # Daily means stamped mid-interval keep their whole-day index
+    # Daily means stamped mid-interval keep their noon stamps rather than
+    # being moved to midnight, which would apply them half a day early.
     noon_first = regrid_window([0.5, 1.5, 2.5], "segment_003")
     noon_second = regrid_window([3.5, 4.5, 5.5], "segment_004")
-    np.testing.assert_allclose(noon_first, [0.0, 1.0, 2.0])
-    np.testing.assert_allclose(noon_second, [3.0, 4.0, 5.0])
+    np.testing.assert_allclose(noon_first, [0.5, 1.5, 2.5])
+    np.testing.assert_allclose(noon_second, [3.5, 4.5, 5.5])
