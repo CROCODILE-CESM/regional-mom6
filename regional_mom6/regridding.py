@@ -100,13 +100,43 @@ def get_hgrid_arakawa_c_points(hgrid: xr.Dataset, point_type="t") -> xr.Dataset:
     return point_dataset
 
 
+def is_periodic_lon(lon) -> bool:
+    """
+    Whether a source longitude coordinate covers the whole globe zonally,
+    i.e. its largest gap between neighbouring longitudes, going round the
+    circle, is no wider than a couple of grid spacings.
+
+    Works for 1-D and 2-D (curvilinear) longitudes in any range (-180..180,
+    0..360). A regional subset always leaves one big gap, so it reads as
+    non-periodic.
+
+    Parameters
+    ----------
+    lon : array-like
+        Source longitudes in degrees.
+
+    Returns
+    -------
+    bool
+    """
+    lon = np.asarray(lon, dtype=float)
+    if lon.size < 2:
+        return False
+    n_x = lon.shape[-1] if lon.ndim > 1 else lon.size
+    values = np.unique(np.mod(lon[np.isfinite(lon)], 360.0))
+    if values.size < 2:
+        return False
+    gaps = np.diff(np.append(values, values[0] + 360.0))
+    return bool(gaps.max() <= 2.0 * 360.0 / n_x + 1e-6)
+
+
 def create_regridder(
     forcing_variables: xr.Dataset,
     output_grid: xr.Dataset,
     outfile: Path = None,
     method: str = "bilinear",
     locstream_out: bool = True,
-    periodic: bool = False,
+    periodic: bool = None,
     reuse_weights: bool = False,
     ignore_degenerate: bool = False,
 ) -> xe.Regridder:
@@ -128,7 +158,14 @@ def create_regridder(
     locstream_out : bool, optional
         Whether to output the locstream; default: ``True``
     periodic : bool, optional
-        Whether the grid is periodic; default: ``False``
+        Whether the source grid is periodic in longitude. Default ``None``
+        detects it from ``forcing_variables["lon"]`` (see
+        :func:`is_periodic_lon`): a source covering the whole globe zonally,
+        e.g. an untrimmed GLORYS or TPXO field, is treated as periodic so
+        points between its last and first longitude column (the source's own
+        seam) still get interpolated. That matters for any target that
+        crosses the source seam, such as a boundary that goes all the way
+        round a cyclic-x domain.
     reuse_weights : bool, optional
         If ``True`` and ``outfile`` exists on disk, load weights instead of
         recomputing them. Default ``False`` — always recompute so that stale
@@ -151,6 +188,12 @@ def create_regridder(
         The regridding object
     """
     regridding_logger.debug("Creating Regridder")
+
+    if periodic is None:
+        try:
+            periodic = is_periodic_lon(forcing_variables["lon"])
+        except KeyError:
+            periodic = False
 
     if reuse_weights and bool(outfile) and isfile(outfile):
         regridding_logger.warning(

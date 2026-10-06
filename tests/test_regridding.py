@@ -250,3 +250,47 @@ def test_mask_dataset_no_dilation():
     assert ds["temp"].values[0, 1] == 20.0
     assert ds["temp"].values[0, 2] == 30.0
     assert ds["temp"].values[0, 4] == 50.0
+
+
+@pytest.mark.parametrize(
+    "lon,expected",
+    [
+        (np.arange(-180, 180, 1 / 12), True),  # GLORYS-style, -180..180
+        (np.arange(0, 360, 0.25), True),  # 0..360
+        (np.arange(-179.5, 180.5, 1.0), True),  # duplicated seam column
+        (np.arange(-80, 20, 1 / 12), False),  # regional subset
+        (np.arange(170, 190, 0.25) % 360, False),  # regional, across 180
+        (np.arange(0, 359, 1.0)[::2], True),  # coarse but global
+        (np.array([10.0]), False),
+    ],
+)
+def test_is_periodic_lon_1d(lon, expected):
+    assert rgd.is_periodic_lon(lon) is expected
+
+
+def test_is_periodic_lon_2d():
+    lon2d, _ = np.meshgrid(np.arange(0, 360, 2.0), np.arange(-80, -30, 2.0))
+    assert rgd.is_periodic_lon(lon2d)
+    assert not rgd.is_periodic_lon(lon2d[:, :90])
+
+
+def test_create_regridder_global_source_fills_across_source_seam():
+    """A target point between the source's last and first longitude column
+    must be interpolated, not left unmapped, when the source is global."""
+    src_lon = np.arange(-179.5, 180, 1.0)
+    src_lat = np.arange(-60.5, -29, 1.0)
+    src = xr.Dataset(
+        {"temp": (("lat", "lon"), np.ones((src_lat.size, src_lon.size)))},
+        coords={"lon": src_lon, "lat": src_lat},
+    )
+    dst = xr.Dataset(
+        coords={
+            "lon": ("locations", np.array([179.9, -179.9, 0.0])),
+            "lat": ("locations", np.array([-45.0, -45.0, -45.0])),
+        }
+    )
+    out = rgd.create_regridder(src, dst)(src["temp"])
+    assert np.isfinite(out.values).all()
+
+    out_nonperiodic = rgd.create_regridder(src, dst, periodic=False)(src["temp"])
+    assert np.isnan(out_nonperiodic.values[:2]).all()

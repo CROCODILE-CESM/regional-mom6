@@ -182,3 +182,38 @@ def test_chl_empty_dataset_unsupported_calendar(calendar):
     than silently given a 365-day axis."""
     with pytest.raises(NotImplementedError, match="not supported"):
         gen_chl_empty_dataset(None, [0.0, 1.0], [0.0, 1.0], calendar=calendar)
+
+
+def test_interpolate_seawifs_covers_source_seam_on_cyclic_grid(
+    small_seawifs_path, tmp_path, monkeypatch
+):
+    """On a grid that wraps around in longitude, cells between the source's
+    last and first column (179 and 181 here, against 5 deg data centred at
+    +-177.5) are interpolated, not left as holes for fill_missing_data."""
+    import regional_mom6.chl as chl_module
+    from mom6_forge.grid import Grid
+
+    grid = Grid(
+        lenx=360.0,
+        leny=40.0,
+        resolution=2.0,
+        xstart=0.0,
+        ystart=-60.0,
+        cyclic_x=True,
+        name="cyclic_chl",
+    )
+    topo = Topo(grid, min_depth=10.0, git=False)
+    topo.set_flat(1000.0)
+
+    holes = []
+    real_fill = chl_module.fill_missing_data
+
+    def fill_and_record(q, mask):
+        holes.append(int((np.isnan(q) & (mask.values == 1)).sum()))
+        return real_fill(q, mask)
+
+    monkeypatch.setattr(chl_module, "fill_missing_data", fill_and_record)
+    interpolate_and_fill_seawifs(
+        grid, topo, small_seawifs_path, tmp_path / "chl_cyclic.nc"
+    )
+    assert holes and max(holes) == 0

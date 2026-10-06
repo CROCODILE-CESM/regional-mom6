@@ -247,6 +247,68 @@ def test_partially_wet_edge_is_kept():
     assert "south" in Segment.detect_open_cardinal_boundaries(topo)
 
 
+def _cyclic_grid_and_topo(name):
+    """A coarse zonally reentrant (cyclic-x) grid, flat and fully wet."""
+    grid = Grid(
+        resolution=10,
+        xstart=0,
+        lenx=360,
+        ystart=-80,
+        leny=50,
+        cyclic_x=True,
+        name=name,
+    )
+    topo = Topo(grid, min_depth=5.0, git=False)
+    topo.set_flat(100.0)
+    return grid, topo
+
+
+def test_cyclic_grid_never_reports_the_seam_as_open():
+    """East/west of a cyclic-x grid are the periodic seam, even when wet."""
+    _, topo = _cyclic_grid_and_topo("cyclic_open")
+    assert set(Segment.detect_open_cardinal_boundaries(topo)) == {"north", "south"}
+
+
+def test_cyclic_grid_with_land_south_only_reports_north():
+    """The Southern Ocean channel case: closed by land in the south, open north."""
+    _, topo = _cyclic_grid_and_topo("cyclic_channel")
+    depth = topo.depth.values.copy()
+    depth[0, :] = 0.0
+    topo.depth = depth
+    assert Segment.detect_open_cardinal_boundaries(topo) == ["north"]
+
+
+@pytest.mark.parametrize("orientation", ["east", "west"])
+def test_cyclic_grid_rejects_seam_segment(orientation):
+    grid, topo = _cyclic_grid_and_topo(f"cyclic_{orientation}")
+    hgrid = grid._supergrid.to_ds(name=grid.name, author="pytest")
+    with pytest.raises(ValueError, match="cyclic-x"):
+        Segment.cardinal(hgrid, orientation, "segment_001", topo=topo)
+
+
+def test_cyclic_grid_full_width_north_segment():
+    """A north edge going all the way round is an ordinary full cardinal edge."""
+    grid, topo = _cyclic_grid_and_topo("cyclic_north")
+    hgrid = grid._supergrid.to_ds(name=grid.name, author="pytest")
+    segment = Segment.cardinal(hgrid, "north", "segment_001", topo=topo)
+    assert segment.mom6_obc_position_string() == "J=N,I=N:0"
+    assert segment.lon.size == hgrid.sizes["nxp"]
+
+
+def test_cyclic_grid_allows_interior_meridional_segment():
+    """Only the seam edges are rejected; an interior nxp line is still fine."""
+    grid, topo = _cyclic_grid_and_topo("cyclic_interior")
+    hgrid = grid._supergrid.to_ds(name=grid.name, author="pytest")
+    segment = Segment.from_hgrid(
+        hgrid,
+        axis="nxp",
+        index=2 * 5 + 1,
+        segment_name="segment_001",
+        ocean_side="east",
+    )
+    assert segment.mom6_obc_position_string().startswith("I=")
+
+
 # ---------------------------------------------------------------------------
 # mom6_obc_position_string
 # ---------------------------------------------------------------------------
