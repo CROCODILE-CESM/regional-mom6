@@ -255,6 +255,36 @@ def rotate(u, v, radian_angle):
     return u_rot, v_rot
 
 
+def earth_to_grid(u, v, angle_deg):
+    """
+    Rotate an earth-relative velocity (``u`` eastward, ``v`` northward) into a MOM6
+    grid's local (x, y) frame, given that grid's ``angle_dx`` (in degrees): the
+    counter-clockwise angle from east to the local grid-x direction.
+
+    MOM6 computes its own grid angle internally (see ``MOM_shared_initialization.F90``)
+    and applies no rotation of its own to the initial-condition or open-boundary
+    velocity data it is handed -- it expects that data already expressed in the
+    grid's own (x, y) frame. So preprocessing must rotate earth-relative velocities
+    into the grid frame, which is a rotation by ``-angle_dx``, i.e. the inverse of
+    the grid-to-earth rotation that :func:`rotate` performs with ``+angle_dx``.
+    Both the initial-condition path (``experiment.setup_initial_condition``) and the
+    open boundary condition path (``Segment.regrid_velocity_tracers``) call this
+    helper so the sign can't drift out of sync between them again.
+
+    Arguments:
+        u (xarray.DataArray): The eastward earth-relative velocity component.
+        v (xarray.DataArray): The northward earth-relative velocity component.
+        angle_deg (xarray.DataArray): The grid's ``angle_dx``, in degrees (the
+            counter-clockwise angle from east to the local grid-x direction).
+
+    Returns:
+        Tuple[xarray.DataArray, xarray.DataArray]: The velocity's :math:`x` and
+        :math:`y` components in the grid's local frame.
+    """
+
+    return rotate(u, v, radian_angle=-np.radians(angle_deg))
+
+
 def is_rectilinear_hgrid(hgrid: xr.Dataset, rtol: float = 1e-3) -> bool:
     """
     Check if the ``hgrid`` is a rectilinear grid by comparing the first and last rows and columns of the tlon and tlat arrays.

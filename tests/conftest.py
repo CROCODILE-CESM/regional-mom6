@@ -113,6 +113,24 @@ def get_rectilinear_hgrid():
     return grid.supergrid.to_ds()
 
 
+@pytest.fixture
+def get_rotated_hgrid():
+    """A small hgrid whose local x-axis is rotated ~30 deg CCW from east
+    (nonzero, roughly uniform angle_dx) -- for the IC/OBC velocity-rotation
+    regression tests, where a rectilinear (angle_dx == 0) hgrid can't show
+    the bug."""
+    grid = Grid.from_center(
+        center_lat=10.0,
+        center_lon=200.0,
+        width_m=200_000,
+        height_m=200_000,
+        resolution_m=50_000,
+        angle_deg=30.0,
+        name="rotated_toy",
+    )
+    return grid.supergrid.to_ds()
+
+
 @pytest.fixture()
 def generate_silly_vt_dataset():
     latitude_extent = [30, 40]

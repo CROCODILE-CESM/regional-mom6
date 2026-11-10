@@ -28,7 +28,7 @@ from regional_mom6.topo import Topo
 from regional_mom6.chl import interpolate_and_fill_seawifs
 from regional_mom6.segment import Segment
 from regional_mom6.utils import (
-    rotate,
+    earth_to_grid,
     find_files_by_pattern,
     try_pint_convert,
 )
@@ -1099,10 +1099,10 @@ class experiment:
         print("Regridding Velocities... ", end="")
         regridded_u = regridder_u(ic_raw_u)
         regridded_v = regridder_v(ic_raw_v)
-        rotated_u, rotated_v = rotate(
+        rotated_u, rotated_v = earth_to_grid(
             regridded_u,
             regridded_v,
-            radian_angle=np.radians(hgrid.angle_dx.values),
+            angle_deg=hgrid.angle_dx.values,
         )
 
         # Slice the velocites to the u and v grid.
